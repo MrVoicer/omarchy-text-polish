@@ -10,7 +10,7 @@ Pick the agent from the pill in the popup's top-left corner, or cycle with
 | Agent | Command used (no session saved, read-only) |
 |---|---|
 | Claude | `claude -p --model haiku` with tools, MCP and settings off |
-| Codex | `codex exec --sandbox read-only` |
+| Codex | `codex exec --ignore-user-config --ignore-rules --ephemeral`, `gpt-6-luna` at low effort (`POLISH_CODEX_MODEL`, `POLISH_CODEX_EFFORT`) |
 | OpenCode | `opencode run --agent plan` (your OpenCode default model) |
 | Command Code | `cmd -p --no-session --max-turns 1 --permission-mode plan` |
 
@@ -58,5 +58,11 @@ twice if the agent overshoots) and shows a live `n / 280` counter while you edit
 box is editable before applying.
 
 ## Notes
+- Nothing runs in the background, so there's nothing to autostart. Everything it
+  needs lives on disk and survives a reboot: the Hyprland binding, the
+  native-host manifests, the extension, and the saved agent choice.
+- The footer shows which agent produced the text and how long it took. Typical
+  times: Claude ~3s, Codex ~5–6s (fixed overhead from Codex's built-in agent
+  prompt, whatever the model), Command Code ~6s, OpenCode ~4–10s.
 - Replace leaves the rewritten text on the clipboard.
 - Logs: `$XDG_RUNTIME_DIR/text-polish/popup.log`, `agent-<style>.err`.

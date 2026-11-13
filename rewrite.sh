@@ -53,8 +53,12 @@ run_agent() {  # $1 = system prompt, $2 = user prompt; sets out, rc
         --system-prompt "$1" 2>"$errf"); rc=$? ;;
     codex)
       local last="$work/codex-$style.txt"; rm -f "$last"
-      printf '%s\n\n%s' "$1" "$2" | timeout 120 codex exec --skip-git-repo-check \
-        --sandbox read-only -o "$last" - >/dev/null 2>"$errf"; rc=$?
+      # Skip ~/.codex/config.toml (high effort + ~10 plugins) and AGENTS rules:
+      # a rewrite needs neither. Small fast model at low effort: ~5s vs ~9s.
+      printf '%s\n\n%s' "$1" "$2" | timeout 120 codex exec --ignore-user-config --ignore-rules \
+        --ephemeral --skip-git-repo-check --sandbox read-only \
+        -m "${POLISH_CODEX_MODEL:-gpt-6-luna}" -c model_reasoning_effort="${POLISH_CODEX_EFFORT:-low}" \
+        -o "$last" - >/dev/null 2>"$errf"; rc=$?
       out=$(cat "$last" 2>/dev/null) ;;
     opencode)
       # read-only "plan" agent; uses opencode's own default model
