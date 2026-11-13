@@ -1,7 +1,7 @@
 # Polish — AI rewrite for selected text
 
 Popup that rewrites highlighted text (Proofread / Casual / Punchy / Concise /
-Formal) with Omarchy's default agent (`omarchy-default-agent`, currently
+Formal / Tweet) with Omarchy's default agent (`omarchy-default-agent`, currently
 `claude`; `codex` also supported), then Replaces or Inserts it back.
 
 ## Requirements
@@ -38,7 +38,9 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
 
 ## Keys in the popup
 Esc close · Ctrl+Enter replace (copy if the selection wasn't editable) ·
-Ctrl+Shift+Enter insert · Ctrl+R regenerate · Alt+1–5 pick style. The result
+Ctrl+Shift+Enter insert · Ctrl+R regenerate · Alt+1–6 pick style.
+**Tweet** keeps the result within X's 280-character limit (it retries up to
+twice if the agent overshoots) and shows a live `n / 280` counter while you edit. The result
 box is editable before applying.
 
 ## Notes

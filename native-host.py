@@ -7,7 +7,7 @@ file and launches the `polish` popup detached, then replies {"ok": true}.
 import json, os, struct, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-STYLES = {"proofread", "casual", "punchy", "concise", "formal"}
+STYLES = {"proofread", "casual", "punchy", "concise", "formal", "tweet"}
 
 
 def reply(obj):

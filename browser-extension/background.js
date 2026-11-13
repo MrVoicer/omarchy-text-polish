@@ -7,6 +7,7 @@ const STYLES = [
   ["punchy", "Punchy"],
   ["concise", "Concise"],
   ["formal", "Formal"],
+  ["tweet", "Tweet (≤ 280 chars)"],
 ];
 
 chrome.runtime.onInstalled.addListener(() => {
