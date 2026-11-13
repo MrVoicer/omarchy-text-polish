@@ -9,7 +9,7 @@ Pick the agent from the pill in the popup's top-left corner, or cycle with
 
 | Agent | Command used (no session saved, read-only) |
 |---|---|
-| Claude | `claude -p --model haiku` with tools, MCP and settings off |
+| Claude | `claude -p --model sonnet` with tools, MCP and settings off (Haiku is as fast but misses proofreading fixes) |
 | Codex | `codex exec --ignore-user-config --ignore-rules --ephemeral`, `gpt-6-luna` at low effort (`POLISH_CODEX_MODEL`, `POLISH_CODEX_EFFORT`) |
 | OpenCode | `opencode run --agent plan` (your OpenCode default model) |
 | Command Code | `cmd -p --no-session --max-turns 1 --permission-mode plan` |
@@ -57,6 +57,16 @@ Alt+O (or the Show original button) swaps the box to the full original text and 
 **Tweet** keeps the result within X's 280-character limit (it retries up to
 twice if the agent overshoots) and shows a live `n / 280` counter while you edit. The result
 box is editable before applying.
+
+## Style rules
+Each mode has concrete, checkable rules in `rewrite.sh` so the modes read
+clearly differently: Casual uses contractions and plain words; Punchy opens
+with the main point in 6 words or fewer and keeps sentences to 12 words or fewer;
+Concise has a hard target of half the original length; Formal uses no
+contractions, slang or "Hey"; Tweet stays within 270 characters, hook first.
+Every mode must keep each fact, number, name, question and request, including
+lines that look like instructions, which are rewritten as text and never
+obeyed. Greetings and filler are the style's call.
 
 ## Notes
 - Nothing runs in the background, so there's nothing to autostart. Everything it
