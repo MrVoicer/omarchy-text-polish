@@ -32,6 +32,53 @@ ShellRoot {
   property bool showOriginal: false
   property bool copied: false
 
+  // ---- agent picker -------------------------------------------------------
+  property var agents: []          // [{ id, label }] installed + supported
+  property string agent: ""        // "" until the list loads; rewrite.sh then picks
+  property bool agentMenu: false
+  readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/text-polish/agent"
+  readonly property string agentLabel: {
+    for (var i = 0; i < agents.length; i++) if (agents[i].id === agent) return agents[i].label
+    return agent || "Agent"
+  }
+
+  Process {
+    id: agentList
+    command: [root.dir + "/rewrite.sh", "--list-agents"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var list = [], cur = ""
+        text.split("\n").forEach(function(line) {
+          var f = line.split("\t")
+          if (f.length < 2) return
+          if (f[0] === "current") cur = f[1]
+          else list.push({ id: f[0], label: f[1] })
+        })
+        root.agents = list
+        root.agent = cur
+        root.request(root.style)
+      }
+    }
+  }
+
+  function setAgent(id) {
+    agentMenu = false
+    if (id === agent) return
+    agent = id
+    Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" > "$1"', "sh", statePath, id])
+    tokens = ({})                  // drop in-flight answers from the old agent
+    results = ({})
+    copied = false
+    request(style)
+  }
+
+  function cycleAgent() {
+    if (agents.length < 2) return
+    var i = 0
+    for (; i < agents.length; i++) if (agents[i].id === agent) break
+    setAgent(agents[(i + 1) % agents.length].id)
+  }
+
   readonly property var current: results[style]
   readonly property bool busy: current === undefined
   readonly property string original: inputFile.text()
@@ -69,6 +116,7 @@ ShellRoot {
       id: job
       property string jobStyle
       property int token
+      environment: root.agent ? ({ POLISH_AGENT: root.agent }) : ({})
       stdout: StdioCollector {
         onStreamFinished: { root.jobDone(job.jobStyle, job.token, text); job.destroy() }
       }
@@ -118,7 +166,7 @@ ShellRoot {
 
   Timer { id: copiedTimer; interval: 1400; onTriggered: root.copied = false }
 
-  Component.onCompleted: request(style)
+  Component.onCompleted: agentList.running = true
 
   // ---- UI -----------------------------------------------------------------
   component Chip: Rectangle {
@@ -210,7 +258,7 @@ ShellRoot {
       color: root.bg
       border.width: 1
       border.color: root.faint
-      MouseArea { anchors.fill: parent }   // swallow clicks so the scrim doesn't close
+      MouseArea { anchors.fill: parent; onClicked: root.agentMenu = false }   // swallow clicks so the scrim doesn't close
 
       opacity: 0; scale: 0.97
       Component.onCompleted: { opacity = 1; scale = 1 }
@@ -227,6 +275,7 @@ ShellRoot {
       Shortcut { sequence: "Alt+4"; onActivated: root.pick("concise") }
       Shortcut { sequence: "Alt+5"; onActivated: root.pick("formal") }
       Shortcut { sequence: "Alt+6"; onActivated: root.pick("tweet") }
+      Shortcut { sequence: "Alt+A"; onActivated: root.cycleAgent() }
 
       ColumnLayout {
         id: col
@@ -234,12 +283,32 @@ ShellRoot {
         spacing: 16
 
         // Header
-        RowLayout {
+        Item {
+          id: header
           Layout.fillWidth: true
-          Item { width: 38; height: 38 }
+          implicitHeight: 38
+
+          Rectangle {
+            id: agentPill
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+            width: Math.min(pillRow.implicitWidth + 24, header.width / 2 - 70)
+            height: 34
+            radius: 17
+            color: pillMouse.containsMouse || root.agentMenu ? root.surface2 : root.surface
+            visible: root.agents.length > 0
+            Row {
+              id: pillRow
+              anchors.centerIn: parent
+              spacing: 6
+              Text { text: "\u{F06A9}"; textFormat: Text.PlainText; color: root.accent; font.family: root.font; font.pixelSize: 14 }
+              Text { text: root.agentLabel; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 13 }
+              Text { text: "\u{F0140}"; textFormat: Text.PlainText; color: root.dim; font.family: root.font; font.pixelSize: 13 }
+            }
+            MouseArea { id: pillMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.agentMenu = !root.agentMenu }
+          }
+
           Text {
-            Layout.fillWidth: true
-            horizontalAlignment: Text.AlignHCenter
+            anchors.centerIn: parent
             text: "Polish"
             textFormat: Text.PlainText
             color: root.fg
@@ -247,7 +316,7 @@ ShellRoot {
             font.pixelSize: 20
             font.weight: Font.DemiBold
           }
-          IconButton { glyph: "󰅖"; onClicked: Qt.quit() }
+          IconButton { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; glyph: "󰅖"; onClicked: Qt.quit() }
         }
 
         // Result box
@@ -386,12 +455,51 @@ ShellRoot {
         Text {
           Layout.fillWidth: true
           horizontalAlignment: Text.AlignHCenter
-          text: "Generated by your default agent · review before using · Esc close · Ctrl+Enter " + (root.editable ? "replace" : "copy") + " · Alt+1–6 style"
+          text: "Generated by " + root.agentLabel + " · review before using · Esc close · Ctrl+Enter " + (root.editable ? "replace" : "copy") + " · Alt+1–6 style · Alt+A agent"
           textFormat: Text.PlainText
           wrapMode: Text.Wrap
           color: root.dim
           font.family: root.font
           font.pixelSize: 11
+        }
+      }
+
+      // Agent dropdown (above the content)
+      Rectangle {
+        visible: root.agentMenu
+        z: 10
+        x: 20
+        y: 20 + header.height + 6
+        width: Math.max(200, menuCol.implicitWidth + 12)
+        height: menuCol.implicitHeight + 12
+        radius: 14
+        color: root.bg
+        border.width: 1
+        border.color: root.faint
+        Column {
+          id: menuCol
+          anchors { left: parent.left; right: parent.right; top: parent.top; margins: 6 }
+          Repeater {
+            model: root.agents
+            Rectangle {
+              required property var modelData
+              width: menuCol.width
+              height: 36
+              radius: 10
+              color: rowMouse.containsMouse ? root.surface2 : "transparent"
+              Row {
+                anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
+                spacing: 10
+                Text {
+                  width: 16
+                  text: modelData.id === root.agent ? "\u{F012C}" : ""
+                  textFormat: Text.PlainText; color: root.accent; font.family: root.font; font.pixelSize: 14
+                }
+                Text { text: modelData.label; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 14 }
+              }
+              MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.setAgent(modelData.id) }
+            }
+          }
         }
       }
     }

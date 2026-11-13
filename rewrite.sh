@@ -3,6 +3,23 @@
 # Rewrites the text in INPUT_FILE with Omarchy's default coding agent.
 # Always exits 0. First stdout line is "OK <style>" or "ERR <style>", the rest is
 # the rewritten text or the error message (the popup parses this).
+# rewrite.sh --list-agents   -> "current<TAB>id" then "id<TAB>Label" per installed agent
+# Agent choice: $POLISH_AGENT, else the popup's saved pick, else omarchy-default-agent.
+state="${XDG_STATE_HOME:-$HOME/.local/state}/text-polish/agent"
+AGENTS=(claude:Claude codex:Codex opencode:OpenCode commandcode:"Command Code")
+pick_agent() {
+  local a=${POLISH_AGENT:-}
+  [[ -z $a && -s $state ]] && read -r a <"$state"
+  [[ -z $a ]] && a=$(omarchy-default-agent 2>/dev/null)
+  echo "${a:-claude}"
+}
+if [[ ${1:-} == --list-agents ]]; then
+  printf 'current\t%s\n' "$(pick_agent)"
+  for e in "${AGENTS[@]}"; do command -v "${e%%:*}" >/dev/null && printf '%s\t%s\n' "${e%%:*}" "${e#*:}"; done
+  exit 0
+fi
+
+exec </dev/null   # agents like opencode wait for EOF on an inherited open stdin
 style=${1:?style}; input=${2:?input file}
 
 case "$style" in
@@ -24,8 +41,7 @@ prompt="<text>
 $text
 </text>"
 
-agent=${POLISH_AGENT:-$(omarchy-default-agent 2>/dev/null)}
-agent=${agent:-claude}
+agent=$(pick_agent)
 work="${XDG_RUNTIME_DIR:-/tmp}/text-polish"; mkdir -p "$work"; cd "$work" || exit 0
 errf="$work/agent-$style.err"
 
@@ -40,13 +56,21 @@ run_agent() {  # $1 = system prompt, $2 = user prompt; sets out, rc
       printf '%s\n\n%s' "$1" "$2" | timeout 120 codex exec --skip-git-repo-check \
         --sandbox read-only -o "$last" - >/dev/null 2>"$errf"; rc=$?
       out=$(cat "$last" 2>/dev/null) ;;
+    opencode)
+      # read-only "plan" agent; uses opencode's own default model
+      out=$(timeout 120 opencode run --agent plan "$1
+
+$2" 2>"$errf"); rc=$? ;;
+    commandcode)
+      out=$(printf '%s\n\n%s' "$1" "$2" | timeout 120 cmd -p --no-session --max-turns 1 \
+        --permission-mode plan 2>"$errf"); rc=$? ;;
   esac
 }
 
 case "$agent" in
-  claude|codex) ;;
+  claude|codex|opencode|commandcode) ;;
   *)
-    printf 'ERR %s\nDefault agent "%s" is not supported yet (claude or codex). Set POLISH_AGENT=claude in the launcher.\n' "$style" "$agent"; exit 0 ;;
+    printf 'ERR %s\nAgent "%s" is not supported (claude, codex, opencode, commandcode). Pick another in the popup header.\n' "$style" "$agent"; exit 0 ;;
 esac
 
 run_agent "$system" "$prompt"

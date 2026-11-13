@@ -1,12 +1,26 @@
 # Polish — AI rewrite for selected text
 
 Popup that rewrites highlighted text (Proofread / Casual / Punchy / Concise /
-Formal / Tweet) with Omarchy's default agent (`omarchy-default-agent`, currently
-`claude`; `codex` also supported), then Replaces or Inserts it back.
+Formal / Tweet) with an AI agent CLI, then Replaces or Inserts it back.
+
+## Agents
+Pick the agent from the pill in the popup's top-left corner, or cycle with
+**Alt+A**. The menu lists whichever of these are installed:
+
+| Agent | Command used (no session saved, read-only) |
+|---|---|
+| Claude | `claude -p --model haiku` with tools, MCP and settings off |
+| Codex | `codex exec --sandbox read-only` |
+| OpenCode | `opencode run --agent plan` (your OpenCode default model) |
+| Command Code | `cmd -p --no-session --max-turns 1 --permission-mode plan` |
+
+The choice is remembered in `~/.local/state/text-polish/agent`. With nothing
+saved, it falls back to `omarchy-default-agent`. `POLISH_AGENT=<id>` overrides
+both.
 
 ## Requirements
 Omarchy (Hyprland, Quickshell), `wl-clipboard`, `wtype`, `jq`, and a logged-in
-`claude` (or `codex`) CLI.
+CLI for at least one of Claude Code, Codex, OpenCode or Command Code.
 
 ## Install
 ```bash
@@ -29,8 +43,8 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
 - `polish` — launcher; grabs text, remembers the focused window, starts the popup.
 - `shell.qml` — standalone Quickshell popup (themed from
   `~/.local/state/omarchy/current/theme/colors.toml`).
-- `rewrite.sh STYLE FILE` — calls the agent (claude: `-p --model haiku`, no
-  tools/MCP/settings). Override with `POLISH_AGENT`, `POLISH_MODEL`.
+- `rewrite.sh STYLE FILE` — calls the selected agent; `rewrite.sh --list-agents`
+  feeds the picker. `POLISH_MODEL` changes Claude's model.
 - `apply.sh replace|insert ADDR TEXT` — wl-copy, refocus, `wtype` Ctrl+V
   (Ctrl+Shift+V in terminals). Insert = Right arrow, space, paste.
 - `native-host.py` — bridge from the extension; `install.sh` registers it
@@ -38,7 +52,7 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
 
 ## Keys in the popup
 Esc close · Ctrl+Enter replace (copy if the selection wasn't editable) ·
-Ctrl+Shift+Enter insert · Ctrl+R regenerate · Alt+1–6 pick style.
+Ctrl+Shift+Enter insert · Ctrl+R regenerate · Alt+1–6 pick style · Alt+A next agent.
 **Tweet** keeps the result within X's 280-character limit (it retries up to
 twice if the agent overshoots) and shows a live `n / 280` counter while you edit. The result
 box is editable before applying.
