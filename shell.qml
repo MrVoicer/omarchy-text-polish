@@ -128,6 +128,7 @@ ShellRoot {
   }
 
   function request(s) {
+    showOriginal = false
     var t = nextToken++
     var tk = Object.assign({}, tokens); tk[s] = t; tokens = tk
     var st = Object.assign({}, startedAt); st[s] = Date.now(); startedAt = st
@@ -151,6 +152,7 @@ ShellRoot {
   }
 
   function pick(s) {
+    showOriginal = false
     style = s
     copied = false
     if (results[s] === undefined && tokens[s] === undefined) request(s)
@@ -283,6 +285,7 @@ ShellRoot {
       Shortcut { sequence: "Alt+5"; onActivated: root.pick("formal") }
       Shortcut { sequence: "Alt+6"; onActivated: root.pick("tweet") }
       Shortcut { sequence: "Alt+A"; onActivated: root.cycleAgent() }
+      Shortcut { sequence: "Alt+O"; onActivated: root.showOriginal = !root.showOriginal }
 
       ColumnLayout {
         id: col
@@ -340,26 +343,13 @@ ShellRoot {
             anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
             spacing: 12
 
-            Text {
-              Layout.fillWidth: true
-              visible: root.showOriginal
-              text: root.original
-              textFormat: Text.PlainText
-              wrapMode: Text.Wrap
-              maximumLineCount: 6
-              elide: Text.ElideRight
-              color: root.dim
-              font.family: root.font
-              font.pixelSize: 13
-              font.italic: true
-            }
-            Rectangle { Layout.fillWidth: true; height: 1; color: root.faint; visible: root.showOriginal }
-
             Item {
               Layout.fillWidth: true
-              Layout.preferredHeight: Math.min(Math.max(editor.implicitHeight, 96), 320)
+              // Sized for whichever is taller, so toggling the original never resizes the popup.
+              Layout.preferredHeight: Math.min(Math.max(editor.implicitHeight, originalView.implicitHeight, 96), 320)
               ScrollView {
                 anchors.fill: parent
+                visible: !root.showOriginal
                 clip: true
                 TextArea {
                   id: editor
@@ -380,7 +370,7 @@ ShellRoot {
                 }
               }
               Text {
-                visible: root.busy
+                visible: root.busy && !root.showOriginal
                 anchors { left: parent.left; top: parent.top; margins: 4 }
                 text: "Rewriting with " + root.agentLabel + "\u2026  " + root.fmtSecs(Math.max(0, root.now - (root.startedAt[root.style] || root.now)))
                 textFormat: Text.PlainText
@@ -393,16 +383,36 @@ ShellRoot {
                   NumberAnimation { from: 0.35; to: 1; duration: 700 }
                 }
               }
+              ScrollView {
+                anchors.fill: parent
+                visible: root.showOriginal
+                clip: true
+                TextArea {
+                  id: originalView
+                  text: root.original
+                  readOnly: true
+                  textFormat: TextEdit.PlainText
+                  wrapMode: TextEdit.Wrap
+                  selectByMouse: true
+                  color: root.dim
+                  selectionColor: root.surface2
+                  selectedTextColor: root.fg
+                  font.family: root.font
+                  font.pixelSize: 16
+                  padding: 4
+                  background: null
+                }
+              }
             }
 
             Rectangle { Layout.fillWidth: true; height: 1; color: root.faint }
 
             RowLayout {
               Layout.fillWidth: true
-              IconButton { glyph: root.copied ? "󰄬" : "󰆏"; enabled: !root.busy && root.current.ok; onClicked: root.copy() }
+              IconButton { glyph: root.copied ? "󰄬" : "󰆏"; enabled: !root.showOriginal && !root.busy && root.current.ok; onClicked: root.copy() }
               Text {
                 // X/Twitter limit; JS length counts emoji as 2, close to X's own weighting.
-                visible: root.style === "tweet" && !root.busy && root.current.ok
+                visible: root.style === "tweet" && !root.showOriginal && !root.busy && root.current.ok
                 text: editor.length + " / 280"
                 textFormat: Text.PlainText
                 color: editor.length > 280 ? root.danger : root.dim
@@ -414,11 +424,21 @@ ShellRoot {
                 color: root.dim; font.family: root.font; font.pixelSize: 13
               }
               Item { Layout.fillWidth: true }
-              Text {
-                text: root.showOriginal ? "Hide original" : "Show original"
-                textFormat: Text.PlainText
-                color: origMouse.containsMouse ? root.fg : root.dim
-                font.family: root.font; font.pixelSize: 13
+              Rectangle {
+                implicitWidth: origText.implicitWidth + 28
+                implicitHeight: 34
+                radius: 17
+                color: root.showOriginal ? Qt.alpha(root.accent, 0.16) : (origMouse.containsMouse ? root.surface2 : root.surface)
+                border.width: root.showOriginal ? 1 : 0
+                border.color: root.accent
+                Text {
+                  id: origText
+                  anchors.centerIn: parent
+                  text: root.showOriginal ? "Show rewrite" : "Show original"
+                  textFormat: Text.PlainText
+                  color: root.showOriginal ? root.accent : root.fg
+                  font.family: root.font; font.pixelSize: 13
+                }
                 MouseArea { id: origMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.showOriginal = !root.showOriginal }
               }
               Item { width: 8 }
@@ -464,7 +484,7 @@ ShellRoot {
           horizontalAlignment: Text.AlignHCenter
           text: (root.busy ? "Generating with " + root.agentLabel
                            : (root.current.ok ? "Generated by " : "Failed with ") + root.agentLabel + " in " + root.fmtSecs(root.current.ms))
-                + " · review before using · Esc close · Ctrl+Enter " + (root.editable ? "replace" : "copy") + " · Alt+1–6 style · Alt+A agent"
+                + " · review before using · Esc close · Ctrl+Enter " + (root.editable ? "replace" : "copy") + " · Alt+1–6 style · Alt+A agent · Alt+O original"
           textFormat: Text.PlainText
           wrapMode: Text.Wrap
           color: root.dim
