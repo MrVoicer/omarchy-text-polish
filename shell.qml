@@ -31,11 +31,13 @@ ShellRoot {
     { key: "witty", label: "Witty" }
   ]
   // ---- settings (per user, outside the repo) ------------------------------
-  // tones: which chips show, in row order. showChanges: the Changes view (#4).
+  // order: all tones in your row order. tones: which of them show.
+  // showChanges: the Changes view (#4). keyHints: hold Alt to see shortcuts.
   // autoChanges: Proofread opens on Changes. prefetch: prepare the next tone
   // in the background so switching is instant (costs an extra agent run).
   readonly property string settingsPath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/text-polish/settings.json"
-  readonly property var defaultSettings: ({ tones: styles.map(function(t) { return t.key }), showChanges: true, autoChanges: true, prefetch: false })
+  readonly property var defaultSettings: ({ order: styles.map(function(t) { return t.key }), tones: styles.map(function(t) { return t.key }),
+                                            showChanges: true, autoChanges: true, prefetch: false, keyHints: true })
   property var settings: defaultSettings
   function setting(k) { return settings[k] !== undefined ? settings[k] : defaultSettings[k] }
   function setSetting(k, val) {
@@ -55,12 +57,43 @@ ShellRoot {
       } catch (e) {}
     }
   }
-  // Chips shown, in the canonical order (hidden tones still work from apps.conf/the browser menu).
+  // All tones in your order (unknown keys dropped, new tones appended).
+  readonly property var orderedStyles: {
+    var o = setting("order"), out = []
+    o.forEach(function(k) { var t = styleByKey(k); if (t && out.indexOf(t) < 0) out.push(t) })
+    styles.forEach(function(t) { if (out.indexOf(t) < 0) out.push(t) })
+    return out
+  }
+  function styleByKey(k) {
+    for (var i = 0; i < styles.length; i++) if (styles[i].key === k) return styles[i]
+    return null
+  }
+  // Chips shown, in your order (hidden tones still work from apps.conf/the browser menu).
   readonly property var tones: {
     var on = setting("tones")
-    var t = styles.filter(function(x) { return on.indexOf(x.key) >= 0 })
-    return t.length ? t : styles
+    var t = orderedStyles.filter(function(x) { return on.indexOf(x.key) >= 0 })
+    return t.length ? t : orderedStyles
   }
+  // Drag-to-reorder in Settings: move the tone at index `from` to slot `to` (0..n).
+  function moveTone(from, to) {
+    var o = orderedStyles.map(function(t) { return t.key })
+    if (from < 0 || from >= o.length || to === from || to === from + 1) return
+    var k = o.splice(from, 1)[0]
+    o.splice(to > from ? to - 1 : to, 0, k)
+    setSetting("order", o)
+  }
+  function resetTones() {
+    var o = Object.assign({}, settings)
+    o.order = defaultSettings.order; o.tones = defaultSettings.tones
+    settings = o
+    setSetting("order", defaultSettings.order)
+  }
+
+  // Hold Alt (~0.3s, so quick Alt+key combos don't flash) to see shortcut hints.
+  property bool altHeld: false
+  Timer { id: altTimer; interval: 300; onTriggered: root.altHeld = root.setting("keyHints") }
+  function altDown() { if (!altHeld && !altTimer.running) altTimer.start() }
+  function altUp() { altTimer.stop(); altHeld = false }
   function toggleTone(k) {
     var on = setting("tones").slice()
     var i = on.indexOf(k)
@@ -116,6 +149,7 @@ ShellRoot {
   // as rich text: removed words struck through, added words highlighted.
   function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") }
   function diffHtml(a, b) {
+    a = a.replace(/\s+$/, ""); b = b.replace(/\s+$/, "")   // a trailing newline isn't an edit
     var A = a.match(/\s+|[^\s]+/g) || [], B = b.match(/\s+|[^\s]+/g) || []
     var pre = 0
     while (pre < A.length && pre < B.length && A[pre] === B[pre]) pre++
@@ -557,10 +591,33 @@ ShellRoot {
   Component.onCompleted: agentList.running = true
 
   // ---- UI components ------------------------------------------------------
+  // Small keycap badge on a control's top-right corner, shown while Alt is held.
+  component KeyHint: Rectangle {
+    property string k
+    visible: opacity > 0 && k !== ""
+    opacity: root.altHeld && k !== "" ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: 120 } }
+    z: 20
+    anchors { top: parent.top; right: parent.right; topMargin: -5; rightMargin: -3 }
+    width: Math.max(17, hintText.implicitWidth + 8); height: 17; radius: 6
+    color: root.surface2
+    border.width: 1
+    border.color: Qt.alpha(root.fg, 0.18)
+    Text {
+      id: hintText
+      anchors.centerIn: parent
+      text: parent.k
+      textFormat: Text.PlainText
+      color: Qt.alpha(root.fg, 0.75)
+      font.family: root.font; font.pixelSize: 10; font.weight: Font.DemiBold
+    }
+  }
+
   component Chip: Rectangle {
     id: chip
     property string label
     property string glyph: ""
+    property string hint: ""
     property bool active
     signal clicked
     implicitWidth: chipRow.implicitWidth + 32
@@ -590,17 +647,20 @@ ShellRoot {
       }
     }
     MouseArea { id: chipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); chip.clicked() } }
+    KeyHint { k: chip.hint }
   }
 
   component IconButton: Rectangle {
     id: ib
     property string glyph
+    property string hint: ""
     signal clicked(int mods)
     width: 38; height: 38; radius: 19
     color: ibMouse.containsMouse && ib.enabled ? root.surface2 : root.surface
     opacity: enabled ? 1 : 0.4
     Text { anchors.centerIn: parent; text: ib.glyph; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 16 }
     MouseArea { id: ibMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: (m) => { root.blurText(); if (ib.enabled) ib.clicked(m.modifiers) } }
+    KeyHint { k: ib.hint }
   }
 
   component ActionButton: Rectangle {
@@ -760,7 +820,7 @@ ShellRoot {
     property string activeKey
     signal chosen(string key)
     Layout.fillWidth: true
-    implicitHeight: 38
+    implicitHeight: 46                       // 4px above/below the chips for key-hint badges
     clip: true
     readonly property real maxX: Math.max(0, fl.contentWidth - fl.width)
     readonly property Flickable flick: fl
@@ -773,12 +833,15 @@ ShellRoot {
       boundsBehavior: Flickable.StopAtBounds
       Row {
         id: tsRow
+        y: 4
         spacing: 8
         Repeater {
           id: tsRep
           model: root.tones
           Chip {
             required property var modelData
+            required property int index
+            hint: index < 8 ? String(index + 1) : ""
             label: root.styleLabel(modelData.key)
             active: ts.activeKey === modelData.key
             onClicked: ts.chosen(modelData.key)
@@ -863,6 +926,9 @@ ShellRoot {
       Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
       Item { id: focusSink; focus: true }
+      // Alt press/release bubbles up here from whichever control has focus.
+      Keys.onPressed: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altDown() }
+      Keys.onReleased: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altUp() }
       readonly property bool typing: editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus
       Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : Qt.quit() }
       Shortcut { sequence: "Alt+D"; enabled: root.view === "main"; onActivated: root.toggleDiff() }
@@ -922,6 +988,8 @@ ShellRoot {
             MouseArea { id: pillMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.agentMenu = !root.agentMenu } }
           }
 
+          KeyHint { k: "A"; visible: agentPill.visible && opacity > 0; anchors.top: agentPill.top; anchors.right: agentPill.right }
+
           // Rewrite | Reply switch (Alt+M)
           Rectangle {
             id: seg
@@ -930,6 +998,7 @@ ShellRoot {
             height: 38
             radius: 19
             color: root.surface
+            KeyHint { k: "M" }
             Row {
               id: segRow
               anchors.centerIn: parent
@@ -957,7 +1026,7 @@ ShellRoot {
             }
           }
           IconButton { id: closeBtn; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0156}"; onClicked: Qt.quit() }
-          IconButton { anchors.right: closeBtn.left; anchors.rightMargin: 6; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0493}"; onClicked: root.openSettings() }
+          IconButton { anchors.right: closeBtn.left; anchors.rightMargin: 6; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0493}"; hint: "S"; onClicked: root.openSettings() }
         }
 
         // Reply mode: what you want to say (Enter drafts the reply)
@@ -1139,6 +1208,7 @@ ShellRoot {
                   color: root.showDiff ? root.accent : root.fg
                   font.family: root.font; font.pixelSize: 13
                 }
+                KeyHint { k: "D" }
                 MouseArea { id: diffMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.toggleDiff() } }
               }
               Rectangle {
@@ -1156,6 +1226,7 @@ ShellRoot {
                   color: root.showOriginal ? root.accent : root.fg
                   font.family: root.font; font.pixelSize: 13
                 }
+                KeyHint { k: "O" }
                 MouseArea { id: origMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.toggleOriginal() } }
               }
               // Version pager: < n / N >
@@ -1200,7 +1271,7 @@ ShellRoot {
         RowLayout {
           Layout.fillWidth: true
           spacing: 8
-          Chip { label: "Adjust"; glyph: "\u{F062E}"; onClicked: root.openAdjust() }
+          Chip { label: "Adjust"; glyph: "\u{F062E}"; hint: "J"; onClicked: root.openAdjust() }
           Rectangle { implicitWidth: 1; implicitHeight: 26; color: root.faint }
           ToneScroller { activeKey: root.style; onChosen: (k) => root.pick(k) }
         }
@@ -1256,7 +1327,7 @@ ShellRoot {
               contentItem: Text {
                 text: "Esc close \u00b7 Ctrl+Enter " + (root.editable ? "replace" : "copy") + " \u00b7 Ctrl+Shift+Enter insert\n"
                     + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate (Shift+\u21BB or Ctrl+Shift+R: from original) \u00b7 Alt+1\u20138 tone\n"
-                    + "Alt+M rewrite/reply \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
+                    + "Hold Alt to see keys \u00b7 Alt+M rewrite/reply \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
                 textFormat: Text.PlainText
                 color: root.fg
                 font.family: root.font
@@ -1380,26 +1451,100 @@ ShellRoot {
         }
 
         SectionLabel { label: "Tone chips"; value: root.tones.length + " of " + root.styles.length + " shown" }
-        Flow {
+        // Tap a chip to show/hide it; drag it to change the row order.
+        Item {
+          id: orderArea
           Layout.fillWidth: true
-          spacing: 8
-          Repeater {
-            model: root.styles
-            Chip {
-              required property var modelData
-              label: modelData.label
-              glyph: active ? "\u{F012C}" : "\u{F0415}"
-              active: root.setting("tones").indexOf(modelData.key) >= 0
-              onClicked: root.toggleTone(modelData.key)
+          implicitHeight: orderFlow.implicitHeight
+          property int dragFrom: -1
+          property int dragTo: -1
+          property point dragPos
+          property string dragLabel
+          function slotAt(p) {
+            var n = orderRep.count, last = -1, first = orderRep.itemAt(0)
+            for (var i = 0; i < n; i++) {
+              var it = orderRep.itemAt(i)
+              if (p.y < it.y - 4 || p.y >= it.y + it.height + 4) continue
+              if (p.x < it.x + it.width / 2) return i
+              last = i
+            }
+            if (last >= 0) return last + 1
+            return first && p.y < first.y ? 0 : n
+          }
+          function begin(i, label) { dragFrom = i; dragLabel = label; dragTo = i }
+          function move(p) { dragPos = p; dragTo = slotAt(p) }
+          function end() {
+            var f = dragFrom, t = dragTo
+            dragFrom = -1; dragTo = -1
+            if (f >= 0 && t >= 0) root.moveTone(f, t)
+          }
+          Flow {
+            id: orderFlow
+            width: parent.width
+            spacing: 8
+            Repeater {
+              id: orderRep
+              model: root.orderedStyles
+              Chip {
+                id: oc
+                required property var modelData
+                required property int index
+                label: modelData.label
+                glyph: active ? "\u{F012C}" : "\u{F0415}"
+                active: root.setting("tones").indexOf(modelData.key) >= 0
+                opacity: orderArea.dragFrom === index ? 0.3 : 1
+                onClicked: root.toggleTone(modelData.key)
+                DragHandler {
+                  target: null
+                  cursorShape: Qt.ClosedHandCursor
+                  onActiveChanged: active ? orderArea.begin(oc.index, oc.label) : orderArea.end()
+                  onTranslationChanged: if (active) orderArea.move(oc.mapToItem(orderArea, centroid.position))
+                }
+              }
             }
           }
+          // Where the chip will land.
+          Rectangle {
+            readonly property Item ref: orderArea.dragTo < 0 ? null
+                : orderRep.itemAt(Math.min(orderArea.dragTo, orderRep.count - 1))
+            readonly property bool after: orderArea.dragTo >= orderRep.count
+            visible: orderArea.dragFrom >= 0 && ref !== null
+                     && orderArea.dragTo !== orderArea.dragFrom && orderArea.dragTo !== orderArea.dragFrom + 1
+            width: 3; radius: 1.5
+            height: ref ? ref.height : 0
+            x: ref ? (after ? ref.x + ref.width + 2.5 : ref.x - 5.5) : 0
+            y: ref ? ref.y : 0
+            color: root.accent
+          }
+          // The chip under your cursor while dragging.
+          Rectangle {
+            visible: orderArea.dragFrom >= 0
+            z: 30
+            x: orderArea.dragPos.x - width / 2
+            y: orderArea.dragPos.y - height / 2
+            width: ghostText.implicitWidth + 32; height: 38; radius: 19
+            color: root.surface2
+            border.width: 1.5; border.color: root.accent
+            opacity: 0.92
+            Text { id: ghostText; anchors.centerIn: parent; text: orderArea.dragLabel; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 14 }
+          }
         }
-        Text {
+        RowLayout {
           Layout.fillWidth: true
-          text: "Hidden tones still work from the browser menu and apps.conf. Alt+1\u20138 follow the chips you show."
-          textFormat: Text.PlainText
-          wrapMode: Text.Wrap
-          color: root.dim; font.family: root.font; font.pixelSize: 11
+          Text {
+            Layout.fillWidth: true
+            text: "Tap to show or hide \u00b7 drag to reorder. Alt+1\u20138 follow the shown chips; hidden tones still work from the browser menu and apps.conf."
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: root.dim; font.family: root.font; font.pixelSize: 11
+          }
+          Text {
+            text: "Reset"
+            textFormat: Text.PlainText
+            color: resetMouse.containsMouse ? root.fg : root.dim
+            font.family: root.font; font.pixelSize: 12; font.underline: resetMouse.containsMouse
+            MouseArea { id: resetMouse; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.resetTones() }
+          }
         }
 
         SectionLabel { Layout.topMargin: 6; label: "Features"; value: "" }
@@ -1415,6 +1560,12 @@ ShellRoot {
           enabled: root.setting("showChanges")
           checked: root.setting("autoChanges")
           onToggled: root.setSetting("autoChanges", !checked)
+        }
+        Toggle {
+          label: "Shortcut hints"
+          detail: "Hold Alt to see each control's key (1\u20138 on the tones, S on the gear, and so on)."
+          checked: root.setting("keyHints")
+          onToggled: root.setSetting("keyHints", !checked)
         }
         Toggle {
           label: "Prepare next tone"
