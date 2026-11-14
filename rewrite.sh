@@ -97,7 +97,7 @@ case "$style" in
   *) fail "Unknown style: $style" ;;
 esac
 
-note=${POLISH_NOTE:-}; note=${note:0:500}
+note=${POLISH_NOTE:-}; note=${note:0:1500}
 # Adjustments from the popup's Adjust panel (all optional; read mode adds its own below).
 [[ $mode == read ]] || case "${POLISH_LENGTH:-}" in
   short) task+="

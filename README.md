@@ -132,10 +132,13 @@ Saved per user in `~/.local/state/text-polish/settings.json` (not in this repo).
   (None / Few / Moderate / Lots) and a free-text request such as "address it
   to Priya". **Generate** adds a new version. The settings are remembered per
   tone while the popup is open.
-- **Pin for <tone>** (in Adjust) keeps those adjustments for that tone in every
-  new popup: picking the chip applies them automatically, and the footer says
-  "pinned". Unpinned adjustments are one-time. Pins are per mode and tone (a
-  pinned Read → Explain doesn't touch Rewrite) and live in `settings.json`.
+- **Pinned instructions.** The Adjust text box is one-time. To keep an
+  instruction, click the pin in the box's corner: it becomes a small chip above
+  the box (up to 3 per tone) and applies every time you pick that tone, in new
+  popups too (the footer says "1 pin"). On a chip, the **pin icon** pauses or
+  resumes it (paused pins stay saved), and the **words** open it in the box to
+  edit, with delete and ✓ done. Pins are per mode and tone and live in
+  `settings.json`.
 
 ## Layout
 Tone chips sit in one row that scrolls sideways, with Adjust pinned on the

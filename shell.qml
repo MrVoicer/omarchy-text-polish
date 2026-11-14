@@ -218,25 +218,82 @@ ShellRoot {
   property string adjStyle: style
   property int adjLength: 1
   property int adjEmoji: 0
-  function adjustFor(s) { return adjustByStyle[s] || pinFor(s) || { length: 1, emoji: 0, note: "" } }
+  function adjustFor(s) { return adjustByStyle[s] || { length: 1, emoji: 0, note: "" } }
 
-  // Pinned adjustments: saved per mode+tone in settings.json and applied to every
-  // generation of that tone, in new popups too. Unpinned ones are one-time.
-  // Each: { length: slider index, emoji: slider index, note }
-  property bool adjPinned: false
+  // Pinned instructions: up to maxPins saved per mode+tone (settings.json "pins"),
+  // each { text, on }. On pins apply to every generation of that tone, in new
+  // popups too; off pins stay saved for later. The Adjust text box is one-time.
+  readonly property int maxPins: 3
   function pinKey(s) { return mode + ":" + s }
-  function pinFor(s) { var p = setting("pins") || {}; return p[pinKey(s)] || null }
-  function setPin(s, a) {
+  function pinsFor(s) {
+    var p = (setting("pins") || {})[pinKey(s)]
+    if (!p) return []
+    if (!Array.isArray(p)) return p.note ? [{ text: p.note, on: true }] : []   // old single-pin format
+    return p
+  }
+  function setPins(s, list) {
     var p = Object.assign({}, setting("pins") || {})
-    if (a) p[pinKey(s)] = a; else delete p[pinKey(s)]
+    if (list.length) p[pinKey(s)] = list; else delete p[pinKey(s)]
     setSetting("pins", p)
   }
-  function pinOpts(a) {
-    return { length: lengthArgs[a.length] || "", emoji: mode === "read" ? "" : (emojiArgs[a.emoji] || ""), note: a.note || "", pinned: true }
+  function activePinText(s) {
+    return pinsFor(s).filter(function(x) { return x.on && x.text.trim() }).map(function(x) { return x.text.trim() })
   }
-  function toggleAdjPin() {
-    adjPinned = !adjPinned
-    setPin(adjStyle, adjPinned ? { length: adjLength, emoji: adjEmoji, note: adjustNote.text.trim() } : null)
+  function addPin(s, text) {
+    var l = pinsFor(s).slice()
+    if (!text.trim() || l.length >= maxPins) return false
+    l.push({ text: text.trim(), on: true })
+    setPins(s, l)
+    return true
+  }
+  function togglePin(s, i) {
+    var l = pinsFor(s).map(function(x) { return Object.assign({}, x) })
+    if (i < 0 || i >= l.length) return
+    l[i].on = !l[i].on
+    setPins(s, l)
+  }
+  function updatePin(s, i, text) {
+    var l = pinsFor(s).map(function(x) { return Object.assign({}, x) })
+    if (i < 0 || i >= l.length) return
+    l[i].text = text
+    setPins(s, l)
+  }
+  function deletePin(s, i) {
+    var l = pinsFor(s).slice()
+    l.splice(i, 1)
+    setPins(s, l)
+  }
+  function pinPreview(t) {
+    var w = t.trim().split(/\s+/)
+    return w.length > 4 ? w.slice(0, 4).join(" ") + "\u2026" : t.trim()
+  }
+
+  // Editing a pin in the Adjust box: the one-time text is set aside meanwhile.
+  property int editingPin: -1
+  property string stashedNote: ""
+  function editPin(i) {
+    if (editingPin === i) { stopEditingPin(); return }
+    if (editingPin < 0) stashedNote = adjustNote.text
+    editingPin = i
+    adjustNote.text = pinsFor(adjStyle)[i].text
+    adjustNote.forceActiveFocus()
+    adjustNote.cursorPosition = adjustNote.length
+  }
+  function stopEditingPin() {
+    if (editingPin < 0) return
+    var t = adjustNote.text.trim()
+    if (!t) deletePin(adjStyle, editingPin); else updatePin(adjStyle, editingPin, t)
+    editingPin = -1
+    adjustNote.text = stashedNote
+  }
+  function deleteEditingPin() {
+    var i = editingPin
+    editingPin = -1
+    deletePin(adjStyle, i)
+    adjustNote.text = stashedNote
+  }
+  function pinBoxText() {
+    if (addPin(adjStyle, adjustNote.text)) adjustNote.text = ""
   }
 
   // ---- agent picker -------------------------------------------------------
@@ -346,14 +403,10 @@ ShellRoot {
   property var prefetched: []
 
   function generate(s, opts) {
-    // A plain pick or prefetch uses the tone's pinned adjustments, if any.
-    if (!opts.adjusted && opts.length === undefined && opts.emoji === undefined && opts.note === undefined) {
-      var pin = pinFor(s)
-      if (pin) opts = Object.assign(pinOpts(pin), opts)
-    }
+    var pins = activePinText(s)      // pinned instructions apply to every generation of this tone
     var v = {
       id: nextId++, style: s, agent: agent, agentLabel: agentLabel,
-      length: opts.length || "", emoji: opts.emoji || "", note: (opts.note || "").trim(), pinned: !!opts.pinned,
+      length: opts.length || "", emoji: opts.emoji || "", note: (opts.note || "").trim(), pins: pins,
       source: baseSource(opts.fromOriginal), edited: false,
       mode: mode, intent: mode === "reply" ? (opts.intent !== undefined ? opts.intent : intent).trim() : "",
       draft: replyDraft(opts.fromOriginal), partial: "",
@@ -370,7 +423,7 @@ ShellRoot {
       now = Date.now()
       vi = versions.length - 1
     }
-    var env = { POLISH_LENGTH: v.length, POLISH_EMOJI: v.emoji, POLISH_NOTE: v.note, POLISH_SOURCE_TEXT: v.source,
+    var env = { POLISH_LENGTH: v.length, POLISH_EMOJI: v.emoji, POLISH_NOTE: v.pins.concat(v.note ? [v.note] : []).join("\n"), POLISH_SOURCE_TEXT: v.source,
                 POLISH_MODE: v.mode, POLISH_INTENT: v.intent, POLISH_DRAFT: v.draft, POLISH_STREAM: "1" }
     if (agent) env.POLISH_AGENT = agent
     var j = jobComp.createObject(root, { versionId: v.id, environment: env,
@@ -546,7 +599,7 @@ ShellRoot {
   // fromOriginal (Shift+click or Ctrl+Shift+R): rewrite the original selection, ignoring edits.
   function regenerate(fromOriginal) {
     var c = at()
-    var o = c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent, pinned: c.pinned } : {}
+    var o = c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent } : {}
     o.fromOriginal = !!fromOriginal
     generate(c ? c.style : style, o)
   }
@@ -563,7 +616,7 @@ ShellRoot {
   }
 
   // ---- adjust panel -------------------------------------------------------
-  function closeAdjust() { saveAdjust(); view = "main" }
+  function closeAdjust() { stopEditingPin(); saveAdjust(); view = "main" }
   function openAdjust() {
     agentMenu = false
     loadAdjust(style)
@@ -573,27 +626,25 @@ ShellRoot {
     var m = Object.assign({}, adjustByStyle)
     m[adjStyle] = { length: adjLength, emoji: adjEmoji, note: adjustNote.text }
     adjustByStyle = m
-    if (adjPinned) setPin(adjStyle, { length: adjLength, emoji: adjEmoji, note: adjustNote.text.trim() })   // keep a pin in sync
   }
   function loadAdjust(s) {
     var a = adjustFor(s)
     adjStyle = s
     adjLength = a.length
     adjEmoji = a.emoji
-    adjPinned = !!pinFor(s)
     adjustNote.text = a.note
   }
   function switchAdjustTone(s) {
     if (s === adjStyle) return
+    stopEditingPin()
     saveAdjust()
     loadAdjust(s)
   }
   function generateAdjusted() {
+    stopEditingPin()
     saveAdjust()
     view = "main"
-    if (adjPinned) setPin(adjStyle, { length: adjLength, emoji: adjEmoji, note: adjustNote.text.trim() })
-    generate(adjStyle, { length: lengthArgs[adjLength], emoji: mode === "read" ? "" : emojiArgs[adjEmoji], note: adjustNote.text,
-                         pinned: adjPinned, adjusted: true })
+    generate(adjStyle, { length: lengthArgs[adjLength], emoji: mode === "read" ? "" : emojiArgs[adjEmoji], note: adjustNote.text })
   }
 
   function versionTags(v) {
@@ -607,7 +658,7 @@ ShellRoot {
     if (v.length) t.push(v.length === "short" ? "short" : "long")
     if (v.emoji) t.push(v.emoji === "none" ? "no emoji" : v.emoji + " emoji")
     if (v.note) t.push("“" + (v.note.length > 28 ? v.note.slice(0, 27) + "…" : v.note) + "”")
-    if (v.pinned) t.push("pinned")
+    if (v.pins && v.pins.length) t.push(v.pins.length === 1 ? "1 pin" : v.pins.length + " pins")
     return t.join(", ")
   }
 
@@ -1436,22 +1487,119 @@ ShellRoot {
         SectionLabel { visible: root.mode !== "read"; Layout.topMargin: 6; label: "Emoji"; value: root.emojiStops[root.adjEmoji] }
         StepSlider { visible: root.mode !== "read"; stops: root.emojiStops; value: root.adjEmoji; glyph: "\u{F01F5}"; onMoved: (v) => root.adjEmoji = v }
 
+        // Pinned instructions for this tone: pin icon = on/off, words = edit.
+        Flow {
+          Layout.fillWidth: true
+          Layout.topMargin: 6
+          spacing: 8
+          visible: root.pinsFor(root.adjStyle).length > 0
+          Repeater {
+            model: root.pinsFor(root.adjStyle)
+            Rectangle {
+              id: pc
+              required property var modelData
+              required property int index
+              readonly property bool editing: root.editingPin === index
+              width: Math.min(pcRow.implicitWidth + 20, 260)
+              height: 32
+              radius: 16
+              color: editing ? Qt.alpha(root.accent, 0.16) : root.surface
+              border.width: editing || modelData.on ? 1 : 0
+              border.color: editing ? root.accent : Qt.alpha(root.accent, 0.5)
+              Row {
+                id: pcRow
+                anchors.verticalCenter: parent.verticalCenter
+                x: 6
+                spacing: 4
+                Rectangle {
+                  width: 24; height: 24; radius: 12
+                  anchors.verticalCenter: parent.verticalCenter
+                  color: pinTog.containsMouse ? root.surface2 : "transparent"
+                  Text {
+                    anchors.centerIn: parent
+                    text: pc.modelData.on ? "\u{F0403}" : "\u{F0404}"
+                    textFormat: Text.PlainText
+                    color: pc.modelData.on ? root.accent : root.faint
+                    font.family: root.font; font.pixelSize: 14
+                  }
+                  MouseArea {
+                    id: pinTog; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: root.togglePin(root.adjStyle, pc.index)
+                    ToolTip.visible: containsMouse; ToolTip.delay: 400
+                    ToolTip.text: pc.modelData.on ? "On: used every time. Click to pause." : "Paused. Click to use it again."
+                  }
+                }
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Math.min(implicitWidth, 200)
+                  elide: Text.ElideRight
+                  text: root.pinPreview(pc.modelData.text)
+                  textFormat: Text.PlainText
+                  color: pc.modelData.on || pc.editing ? root.fg : root.dim
+                  font.family: root.font; font.pixelSize: 13
+                  font.strikeout: false
+                  MouseArea {
+                    anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
+                    onClicked: root.editPin(pc.index)
+                  }
+                }
+              }
+            }
+          }
+        }
+
         Rectangle {
           Layout.fillWidth: true
           Layout.topMargin: 6
           implicitHeight: 110
           radius: 18
           color: root.surface
-          border.width: adjustNote.activeFocus ? 1 : 0
+          border.width: adjustNote.activeFocus || root.editingPin >= 0 ? 1 : 0
           border.color: root.accent
+          // Corner controls: pin the text (one-time box), or delete/done while editing a pin.
+          Row {
+            z: 2
+            anchors { right: parent.right; bottom: parent.bottom; margins: 8 }
+            spacing: 4
+            Text {
+              visible: root.editingPin >= 0
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Editing pin  "
+              textFormat: Text.PlainText
+              color: root.accent; font.family: root.font; font.pixelSize: 11
+            }
+            IconButton {
+              visible: root.editingPin >= 0
+              width: 30; height: 30
+              glyph: "\u{F01B4}"
+              onClicked: root.deleteEditingPin()
+            }
+            IconButton {
+              visible: root.editingPin >= 0
+              width: 30; height: 30
+              glyph: "\u{F012C}"
+              onClicked: root.stopEditingPin()
+            }
+            IconButton {
+              visible: root.editingPin < 0 && adjustNote.text.trim() !== ""
+              enabled: root.pinsFor(root.adjStyle).length < root.maxPins
+              width: 30; height: 30
+              glyph: "\u{F0403}"
+              onClicked: root.pinBoxText()
+              ToolTip.visible: pinHover.hovered; ToolTip.delay: 400
+              ToolTip.text: enabled ? "Pin: use this every time for " + root.styleLabel(root.adjStyle) : "Up to " + root.maxPins + " pins per tone"
+              HoverHandler { id: pinHover }
+            }
+          }
           ScrollView {
             anchors.fill: parent
             anchors.margins: 10
+            anchors.bottomMargin: 40
             clip: true
             TextArea {
               id: adjustNote
-              placeholderText: root.mode === "read" ? "What should it focus on? (e.g. just the deadlines, explain it like I'm new to finance)"
-                                                    : "Enter your adjustment request (e.g. address it to Priya, mention the demo)"
+              placeholderText: root.mode === "read" ? "Just this time: what should it focus on? (e.g. just the deadlines) \u2014 pin it to keep it"
+                                                    : "Just this time: e.g. address it to Priya, mention the demo \u2014 pin it to keep it"
               placeholderTextColor: root.faint
               textFormat: TextEdit.PlainText
               wrapMode: TextEdit.Wrap
@@ -1465,14 +1613,6 @@ ShellRoot {
           }
         }
 
-        Toggle {
-          label: "\u{F0403}  Pin for " + root.styleLabel(root.adjStyle) + (root.mode === "reply" ? " replies" : "")
-          detail: checked ? "Used every time you pick " + root.styleLabel(root.adjStyle) + ", in new popups too. Turn off to make it one-time."
-                          : "Off: these adjustments apply only to this generation."
-          checked: root.adjPinned
-          onToggled: root.toggleAdjPin()
-        }
-
         ActionButton {
           Layout.topMargin: 4
           label: "Generate"
@@ -1483,7 +1623,7 @@ ShellRoot {
         Text {
           Layout.fillWidth: true
           horizontalAlignment: Text.AlignHCenter
-          text: "Adds a new version \u00b7 unpinned adjustments last until you close the popup"
+          text: "Adds a new version \u00b7 pinned instructions apply every time; the box is one-time"
           textFormat: Text.PlainText
           wrapMode: Text.Wrap
           color: root.dim
