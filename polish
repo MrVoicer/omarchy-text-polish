@@ -50,7 +50,8 @@ fi
 case "$mode" in reply|read) ;; *) mode=rewrite ;; esac
 # Read mode has its own chips; a rewrite tone from apps.conf doesn't apply there.
 if [[ $mode == read ]]; then
-  case "$style" in summarize|keypoints|explain) ;; *) style=summarize ;; esac
+  # No explicit Read action: the popup opens on the one you used last.
+  case "$style" in summarize|keypoints|explain) ;; *) style=last ;; esac
 else
   case "$style" in summarize|keypoints|explain) style=proofread ;; esac
 fi

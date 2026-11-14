@@ -321,6 +321,7 @@ ShellRoot {
         })
         root.agents = list
         root.agent = cur
+        if (root.mode === "read" && !root.isReadStyle(root.style)) root.style = root.lastRead()
         root.generate(root.style, {})
       }
     }
@@ -415,6 +416,7 @@ ShellRoot {
     if (v.bg) {
       prefetched = prefetched.concat([v])
     } else {
+      noteReadUse(s)
       versions = versions.concat([v])
       style = s
       showOriginal = false
@@ -550,6 +552,7 @@ ShellRoot {
 
   // Chip: jump to the latest version of that tone, or generate one.
   function pick(s) {
+    noteReadUse(s)
     showOriginal = false
     for (var i = versions.length - 1; i >= 0; i--) {
       if (versions[i].style === s && versions[i].mode === mode) { vi = i; style = s; return }
@@ -569,14 +572,18 @@ ShellRoot {
   }
 
   // Each side keeps its own last chip: Read has its own; Rewrite and Reply share tones.
-  property string lastReadStyle: "summarize"
+  property string lastReadStyle: ""         // this popup's; falls back to the saved last-used one
+  // Read opens on the action you used last (saved as "lastRead" in settings.json).
+  function isReadStyle(k) { return readStyles.some(function(t) { return t.key === k }) }
+  function lastRead() { var k = setting("lastRead"); return isReadStyle(k) ? k : "summarize" }
+  function noteReadUse(s) { if (mode === "read" && isReadStyle(s) && setting("lastRead") !== s) setSetting("lastRead", s) }
   property string lastToneStyle: ""         // set when leaving Rewrite/Reply (plain value, not a binding)
   function setMode(m) {
     if (m === mode) return
     if (mode === "read") lastReadStyle = style; else lastToneStyle = style
     mode = m
     agentMenu = false
-    pick(m === "read" ? lastReadStyle : (lastToneStyle || "proofread"))   // that chip's latest version in this mode, or a new one
+    pick(m === "read" ? (lastReadStyle || lastRead()) : (lastToneStyle || "proofread"))   // that chip's latest version in this mode, or a new one
   }
   function cycleMode() {
     var i = 0
