@@ -7,7 +7,8 @@ file and launches the `polish` popup detached, then replies {"ok": true}.
 import json, os, struct, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-STYLES = {"proofread", "casual", "punchy", "concise", "detailed", "formal", "witty", "tweet"}
+STYLES = {"proofread", "casual", "punchy", "concise", "detailed", "formal", "witty", "tweet",
+          "summarize", "keypoints", "explain"}
 
 
 def reply(obj):
@@ -26,7 +27,7 @@ def main():
     msg = json.loads(sys.stdin.buffer.read(size))
     text = str(msg.get("text", ""))[:20000]
     style = msg.get("style") if msg.get("style") in STYLES else "auto"   # auto: apps.conf decides
-    mode = "reply" if msg.get("mode") == "reply" else "rewrite"
+    mode = msg.get("mode") if msg.get("mode") in ("reply", "read") else "rewrite"
     url = str(msg.get("url", ""))[:2000]
     if not url.startswith(("http://", "https://")):
         url = ""

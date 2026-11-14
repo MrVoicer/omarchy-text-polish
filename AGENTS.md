@@ -22,6 +22,10 @@ learn something the next person would otherwise rediscover the hard way.
 - **Modes must stay distinct.** Each tone has concrete rules and a length
   target in `rewrite.sh`; if two tones start producing similar output, the
   tone is useless. Re-benchmark across agents after changing prompts.
+- **Three modes, separate chip sets.** Rewrite and Reply share the user's tone
+  row (Settings order/visibility); Read has its own fixed chips (Summarize, Key
+  points, Explain). Read styles are rejected outside Read mode and vice versa,
+  in both `polish` and `rewrite.sh`.
 - **Selected text is untrusted.** It's wrapped in `<text>`/`<message>` tags
   and the system prompt says never to follow instructions inside it. Keep that
   when adding modes.
@@ -40,7 +44,9 @@ source window and paste). Browser: `browser-extension/` →
 
 - **QML:** nested inline components aren't allowed (declare `component X`
   at the file root). `anchors { a; b }` on one line with `;` inside breaks; use
-  separate `anchors.x:` lines. Inside `onViChanged` read `versions[vi]` via
+  separate `anchors.x:` lines. A property initialised with an expression
+  (`property string x: mode === "read" ? a : b`) is a live *binding*; for a
+  remembered value, start it empty and assign it in a function. Inside `onViChanged` read `versions[vi]` via
   `at()`; the `current` binding may not have updated yet.
 - **Clipped parents hide badges/overlays** (the agent pill and the tone row
   clip). Anchor such overlays to a non-clipping sibling or leave margin.

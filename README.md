@@ -63,6 +63,18 @@ promises: missing details become `[placeholders]`. Every tone applies
 edit is used as the draft. Buttons: **Paste** at your cursor in the source
 window, or **Copy** (copies and closes) to paste into the chat yourself.
 
+## Read mode
+For text you're reading rather than writing, the **Read** tab (Alt+M cycles
+Rewrite → Reply → Read; Brave's right-click **Read with AI**) has its own chips:
+- **Summarize**: the main point in a sentence or two, about a quarter of the
+  original's length at most.
+- **Key points**: 3–7 short bullets, keeping numbers, names, dates and action items.
+- **Explain**: what it means in plain words, with jargon and acronyms defined.
+
+Adjust works here too (Length plus a request like "just the deadlines"; no
+emoji slider). The buttons are **Close** and **Copy**, and Copy keeps the popup
+open. `polish --mode read` opens straight into it.
+
 ## Tone by app (`apps.conf`)
 Without an explicit tone, Polish starts in the tone of the first rule whose
 regex matches the window class, title and (from Brave) the page URL. The
@@ -127,7 +139,7 @@ keyboard shortcuts.
 
 ## Keys in the popup
 Esc close · Ctrl+Enter replace (copy if the selection wasn't editable) ·
-Ctrl+Shift+Enter insert · Ctrl+R regenerate · ←/→ versions · Alt+1–8 pick style · Alt+J adjust · Alt+M rewrite/reply · Alt+A next agent ·
+Ctrl+Shift+Enter insert · Ctrl+R regenerate · ←/→ versions · Alt+1–8 pick style · Alt+J adjust · Alt+M rewrite/reply/read · Alt+A next agent ·
 Alt+D changes · Alt+S settings ·
 Alt+O (or the Show original button) swaps the box to the full original text and back.
 **Tweet** keeps the result within X's 280-character limit (it retries up to

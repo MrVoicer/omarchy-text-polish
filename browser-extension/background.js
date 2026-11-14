@@ -1,4 +1,5 @@
-// Polish — adds "Rewrite with AI" to the right-click menu on selected text and
+// Polish — adds "Rewrite with AI", "Reply with AI" and "Read with AI" to the
+// right-click menu on selected text and
 // hands the selection to the local `polish` popup via native messaging.
 const HOST = "com.voicer.text_polish";
 const STYLES = [
@@ -11,6 +12,11 @@ const STYLES = [
   ["formal", "Formal"],
   ["witty", "Witty"],
 ];
+const READ = [
+  ["summarize", "Summarize"],
+  ["keypoints", "Key points"],
+  ["explain", "Explain simply"],
+];
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
@@ -20,6 +26,11 @@ chrome.runtime.onInstalled.addListener(() => {
     }
     // Draft a reply to the selected message; the tone comes from the site (apps.conf).
     chrome.contextMenus.create({ id: "reply:auto", title: "Reply with AI", contexts: ["selection"] });
+    // Understand text you're reading: summary, key points or a plain explanation.
+    chrome.contextMenus.create({ id: "read", title: "Read with AI", contexts: ["selection"] });
+    for (const [key, label] of READ) {
+      chrome.contextMenus.create({ id: `read:${key}`, parentId: "read", title: label, contexts: ["selection"] });
+    }
   });
 });
 
@@ -39,6 +50,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   let style, mode;
   if (id.startsWith("polish:")) { style = id.slice("polish:".length); mode = "rewrite"; }
   else if (id === "reply:auto") { style = "auto"; mode = "reply"; }
+  else if (id.startsWith("read:")) { style = id.slice("read:".length); mode = "read"; }
   else return;
   let text = info.selectionText || "";
   try {

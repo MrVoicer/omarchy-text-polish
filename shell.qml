@@ -101,12 +101,23 @@ ShellRoot {
     setSetting("tones", on)
   }
 
+  // Read mode's own chips: understand text you didn't write.
+  readonly property var readStyles: [
+    { key: "summarize", label: "Summarize" },
+    { key: "keypoints", label: "Key points" },
+    { key: "explain", label: "Explain" }
+  ]
+  readonly property var modes: [{ key: "rewrite", label: "Rewrite" }, { key: "reply", label: "Reply" }, { key: "read", label: "Read" }]
   // "rewrite": restyle the selection. "reply": draft a reply to the selected message.
-  property string mode: Quickshell.env("POLISH_MODE_START") === "reply" ? "reply" : "rewrite"
+  // "read": summarize or explain it.
+  property string mode: ["reply", "read"].indexOf(Quickshell.env("POLISH_MODE_START")) >= 0 ? Quickshell.env("POLISH_MODE_START") : "rewrite"
+  // Chips for the current mode (rewrite and reply share your tone row).
+  readonly property var modeTones: mode === "read" ? readStyles : tones
   property string intent: ""                // Reply mode: what you want to say
   function styleLabel(k) {
     if (k === "proofread" && mode === "reply") return "Standard"
     for (var i = 0; i < styles.length; i++) if (styles[i].key === k) return styles[i].label
+    for (var j = 0; j < readStyles.length; j++) if (readStyles[j].key === k) return readStyles[j].label
     return k
   }
 
@@ -441,6 +452,7 @@ ShellRoot {
     var v = at()
     loadingEditor = true
     editor.text = !v ? "" : v.busy ? (v.partial || "") : v.text
+    if (v && !v.busy) editor.cursorPosition = 0      // finished: show it from the top
     loadingEditor = false
     copied = false
   }
@@ -479,11 +491,20 @@ ShellRoot {
     generate(s, {})
   }
 
+  // Each side keeps its own last chip: Read has its own; Rewrite and Reply share tones.
+  property string lastReadStyle: "summarize"
+  property string lastToneStyle: ""         // set when leaving Rewrite/Reply (plain value, not a binding)
   function setMode(m) {
     if (m === mode) return
+    if (mode === "read") lastReadStyle = style; else lastToneStyle = style
     mode = m
     agentMenu = false
-    pick(style)          // that tone's latest version in this mode, or a new one
+    pick(m === "read" ? lastReadStyle : (lastToneStyle || "proofread"))   // that chip's latest version in this mode, or a new one
+  }
+  function cycleMode() {
+    var i = 0
+    for (; i < modes.length; i++) if (modes[i].key === mode) break
+    setMode(modes[(i + 1) % modes.length].key)
   }
 
   function draftReply() {
@@ -493,8 +514,8 @@ ShellRoot {
   }
 
   function toneByIndex(i) {
-    if (i >= tones.length) return
-    var k = tones[i].key
+    if (i >= modeTones.length) return
+    var k = modeTones[i].key
     if (view === "adjust") switchAdjustTone(k); else pick(k)
   }
 
@@ -544,12 +565,13 @@ ShellRoot {
   function generateAdjusted() {
     saveAdjust()
     view = "main"
-    generate(adjStyle, { length: lengthArgs[adjLength], emoji: emojiArgs[adjEmoji], note: adjustNote.text })
+    generate(adjStyle, { length: lengthArgs[adjLength], emoji: mode === "read" ? "" : emojiArgs[adjEmoji], note: adjustNote.text })
   }
 
   function versionTags(v) {
     if (!v) return ""
-    var t = [v.mode === "reply" ? "Reply, " + (v.style === "proofread" ? "Standard" : styleLabel(v.style)) : styleLabel(v.style)]
+    var t = [v.mode === "reply" ? "Reply, " + (v.style === "proofread" ? "Standard" : styleLabel(v.style))
+           : v.mode === "read" ? "Read, " + styleLabel(v.style) : styleLabel(v.style)]
     if (v.intent) t.push("\u201C" + (v.intent.length > 24 ? v.intent.slice(0, 23) + "\u2026" : v.intent) + "\u201D")
     if (v.draft) t.push("from your draft")
     if (v.source) t.push("from your edit")
@@ -558,6 +580,13 @@ ShellRoot {
     if (v.emoji) t.push(v.emoji === "none" ? "no emoji" : v.emoji + " emoji")
     if (v.note) t.push("“" + (v.note.length > 28 ? v.note.slice(0, 27) + "…" : v.note) + "”")
     return t.join(", ")
+  }
+
+  function busyVerb() {
+    var v = current, m = v ? v.mode : mode, st = v ? v.style : style
+    if (m === "reply") return "Drafting reply"
+    if (m === "read") return st === "explain" ? "Explaining" : st === "keypoints" ? "Finding key points" : "Summarizing"
+    return "Rewriting"
   }
 
   // ---- actions ------------------------------------------------------------
@@ -837,7 +866,7 @@ ShellRoot {
         spacing: 8
         Repeater {
           id: tsRep
-          model: root.tones
+          model: root.modeTones
           Chip {
             required property var modelData
             required property int index
@@ -858,8 +887,8 @@ ShellRoot {
     }
     NumberAnimation { id: scrollAnim; target: fl; property: "contentX"; duration: 180; easing.type: Easing.OutCubic }
     function ensureVisible() {
-      for (var i = 0; i < root.tones.length; i++) {
-        if (root.tones[i].key !== activeKey) continue
+      for (var i = 0; i < root.modeTones.length; i++) {
+        if (root.modeTones[i].key !== activeKey) continue
         var it = tsRep.itemAt(i)
         if (!it) return
         var x = fl.contentX
@@ -933,9 +962,9 @@ ShellRoot {
       Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : Qt.quit() }
       Shortcut { sequence: "Alt+D"; enabled: root.view === "main"; onActivated: root.toggleDiff() }
       Shortcut { sequences: ["Ctrl+,", "Alt+S"]; onActivated: root.openSettings() }
-      Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; onActivated: root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.editable ? root.apply("replace") : root.copy()) }
-      Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.view === "main" && (root.editable || root.mode === "reply"); onActivated: root.apply(root.mode === "reply" ? "paste" : "insert") }
-      Shortcut { sequence: "Alt+M"; enabled: root.view === "main"; onActivated: root.setMode(root.mode === "reply" ? "rewrite" : "reply") }
+      Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; onActivated: root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.mode === "rewrite" && root.editable ? root.apply("replace") : root.copy()) }
+      Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.view === "main" && root.mode !== "read" && (root.editable || root.mode === "reply"); onActivated: root.apply(root.mode === "reply" ? "paste" : "insert") }
+      Shortcut { sequence: "Alt+M"; enabled: root.view === "main"; onActivated: root.cycleMode() }
       Shortcut { sequence: "Ctrl+R"; enabled: root.view === "main"; onActivated: root.regenerate(false) }
       Shortcut { sequence: "Ctrl+Shift+R"; enabled: root.view === "main"; onActivated: root.regenerate(true) }
       // Left/Right page through versions unless a text box has the cursor; Alt+Left/Right always do.
@@ -990,7 +1019,7 @@ ShellRoot {
 
           KeyHint { k: "A"; visible: agentPill.visible && opacity > 0; anchors.top: agentPill.top; anchors.right: agentPill.right }
 
-          // Rewrite | Reply switch (Alt+M)
+          // Rewrite | Reply | Read switch (Alt+M cycles)
           Rectangle {
             id: seg
             anchors.centerIn: parent
@@ -1004,7 +1033,7 @@ ShellRoot {
               anchors.centerIn: parent
               spacing: 4
               Repeater {
-                model: [{ key: "rewrite", label: "Rewrite" }, { key: "reply", label: "Reply" }]
+                model: root.modes
                 Rectangle {
                   required property var modelData
                   width: segText.implicitWidth + 28
@@ -1112,7 +1141,7 @@ ShellRoot {
               Text {
                 visible: root.busy && !root.showOriginal && editor.length === 0
                 anchors { left: parent.left; top: parent.top; margins: 4 }
-                text: (root.mode === "reply" ? "Drafting reply with " : "Rewriting with ") + (root.current ? root.current.agentLabel : root.agentLabel) + "…  "
+                text: root.busyVerb() + " with " + (root.current ? root.current.agentLabel : root.agentLabel) + "…  "
                       + root.fmtSecs(Math.max(0, root.now - (root.current ? root.current.startedAt : root.now)))
                 textFormat: Text.PlainText
                 color: root.dim
@@ -1221,7 +1250,7 @@ ShellRoot {
                 Text {
                   id: origText
                   anchors.centerIn: parent
-                  text: root.showOriginal ? "Rewrite" : "Original"
+                  text: root.showOriginal ? (root.mode === "rewrite" ? "Rewrite" : root.mode === "reply" ? "Reply" : "Result") : "Original"
                   textFormat: Text.PlainText
                   color: root.showOriginal ? root.accent : root.fg
                   font.family: root.font; font.pixelSize: 13
@@ -1282,16 +1311,18 @@ ShellRoot {
           spacing: 12
           // Rewrite: Insert / Replace (Close / Copy for read-only text).
           // Reply: Paste at your cursor / Copy and close, to paste into the chat yourself.
+          // Read: Close / Copy (stays open so you can keep reading).
+          readonly property bool writes: root.mode === "reply" || (root.mode === "rewrite" && root.editable)
           ActionButton {
-            label: root.mode === "reply" ? "Paste" : (root.editable ? "Insert" : "Close")
-            enabled: root.mode === "reply" || root.editable ? (!root.busy && root.current.ok) : true
-            onClicked: root.mode === "reply" ? root.apply("paste") : (root.editable ? root.apply("insert") : Qt.quit())
+            label: root.mode === "reply" ? "Paste" : (parent.writes ? "Insert" : "Close")
+            enabled: parent.writes ? (!root.busy && root.current.ok) : true
+            onClicked: root.mode === "reply" ? root.apply("paste") : (parent.writes ? root.apply("insert") : Qt.quit())
           }
           ActionButton {
-            label: root.mode === "reply" ? "Copy" : (root.editable ? "Replace" : "Copy")
+            label: root.mode === "reply" ? "Copy" : (parent.writes ? "Replace" : "Copy")
             primary: true
             enabled: !root.busy && root.current.ok
-            onClicked: root.mode === "reply" ? root.copyAndClose() : (root.editable ? root.apply("replace") : root.copy())
+            onClicked: root.mode === "reply" ? root.copyAndClose() : (parent.writes ? root.apply("replace") : root.copy())
           }
         }
 
@@ -1327,7 +1358,7 @@ ShellRoot {
               contentItem: Text {
                 text: "Esc close \u00b7 Ctrl+Enter " + (root.editable ? "replace" : "copy") + " \u00b7 Ctrl+Shift+Enter insert\n"
                     + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate (Shift+\u21BB or Ctrl+Shift+R: from original) \u00b7 Alt+1\u20138 tone\n"
-                    + "Hold Alt to see keys \u00b7 Alt+M rewrite/reply \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
+                    + "Hold Alt to see keys \u00b7 Alt+M rewrite/reply/read \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
                 textFormat: Text.PlainText
                 color: root.fg
                 font.family: root.font
@@ -1373,8 +1404,8 @@ ShellRoot {
         SectionLabel { Layout.topMargin: 6; label: "Length"; value: root.lengthStops[root.adjLength] + (root.adjLength === 1 ? " (tone default)" : "") }
         StepSlider { stops: root.lengthStops; value: root.adjLength; glyph: "T"; onMoved: (v) => root.adjLength = v }
 
-        SectionLabel { Layout.topMargin: 6; label: "Emoji"; value: root.emojiStops[root.adjEmoji] }
-        StepSlider { stops: root.emojiStops; value: root.adjEmoji; glyph: "\u{F01F5}"; onMoved: (v) => root.adjEmoji = v }
+        SectionLabel { visible: root.mode !== "read"; Layout.topMargin: 6; label: "Emoji"; value: root.emojiStops[root.adjEmoji] }
+        StepSlider { visible: root.mode !== "read"; stops: root.emojiStops; value: root.adjEmoji; glyph: "\u{F01F5}"; onMoved: (v) => root.adjEmoji = v }
 
         Rectangle {
           Layout.fillWidth: true
@@ -1390,7 +1421,8 @@ ShellRoot {
             clip: true
             TextArea {
               id: adjustNote
-              placeholderText: "Enter your adjustment request (e.g. address it to Priya, mention the demo)"
+              placeholderText: root.mode === "read" ? "What should it focus on? (e.g. just the deadlines, explain it like I'm new to finance)"
+                                                    : "Enter your adjustment request (e.g. address it to Priya, mention the demo)"
               placeholderTextColor: root.faint
               textFormat: TextEdit.PlainText
               wrapMode: TextEdit.Wrap

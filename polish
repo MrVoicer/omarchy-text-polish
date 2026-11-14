@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # polish — open the AI rewrite popup for the selected text.
 #   polish                       use the primary selection (whatever is highlighted)
-#   polish --file F [--style S] [--editable yes|no] [--mode rewrite|reply] [--url U]
+#   polish --file F [--style S] [--editable yes|no] [--mode rewrite|reply|read] [--url U]
 #                                (used by the browser extension)
 # Without --style, the starting tone comes from apps.conf (window class/title/url).
 set -uo pipefail
@@ -47,7 +47,13 @@ if [[ -z $style || $style == auto ]]; then
     if grep -qiE -- "$re" <<<"$hay" 2>/dev/null; then style=$tone; break; fi
   done <"$DIR/apps.conf"
 fi
-[[ $mode == reply ]] || mode=rewrite
+case "$mode" in reply|read) ;; *) mode=rewrite ;; esac
+# Read mode has its own chips; a rewrite tone from apps.conf doesn't apply there.
+if [[ $mode == read ]]; then
+  case "$style" in summarize|keypoints|explain) ;; *) style=summarize ;; esac
+else
+  case "$style" in summarize|keypoints|explain) style=proofread ;; esac
+fi
 
 export POLISH_INPUT=$input POLISH_MODE_START=$mode POLISH_STYLE=$style POLISH_EDITABLE=$editable POLISH_DIR=$DIR
 export POLISH_WINDOW=$(jq -r '.address // empty' <<<"$win")
