@@ -93,8 +93,9 @@ the whole result. Other agents return all at once.
   tone while the popup is open.
 
 ## Layout
-Tone chips sit in one row that scrolls sideways (mouse wheel or drag), with
-Adjust pinned on the left. The footer is one line; hover its ⓘ icon for the
+Tone chips sit in one row that scrolls sideways, with Adjust pinned on the
+left. Scroll it with a touchpad swipe, the mouse wheel, a drag, or the ‹ ›
+arrows at the edges: hover one to glide that way, click it to jump a page. The footer is one line; hover its ⓘ icon for the
 keyboard shortcuts.
 
 ## Keys in the popup

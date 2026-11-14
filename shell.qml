@@ -495,8 +495,46 @@ ShellRoot {
     Text { text: parent.value; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 14 }
   }
 
-  // One horizontally scrolling row of tone chips (wheel or drag), with edge
-  // fades when more chips are off-screen; the active chip scrolls into view.
+  // Edge zone of the tone row: shown only when chips are hidden on that side.
+  // Hovering scrolls toward it (for a plain mouse); clicking jumps ~a page.
+  component Edge: Item {
+    id: edge
+    property int dir: 1
+    required property var ts
+    readonly property Flickable fl: ts.flick
+    anchors { top: parent.top; bottom: parent.bottom }
+    width: 40
+    visible: dir < 0 ? edge.fl.contentX > 1 : edge.fl.contentX < edge.ts.maxX - 1
+    Rectangle {
+      anchors.fill: parent
+      gradient: Gradient {
+        orientation: Gradient.Horizontal
+        GradientStop { position: 0; color: edge.dir < 0 ? root.bg : Qt.alpha(root.bg, 0) }
+        GradientStop { position: 0.55; color: root.bg }
+        GradientStop { position: 1; color: edge.dir < 0 ? Qt.alpha(root.bg, 0) : root.bg }
+      }
+    }
+    Text {
+      anchors.verticalCenter: parent.verticalCenter
+      x: edge.dir < 0 ? 4 : parent.width - width - 4
+      text: edge.dir < 0 ? "\u2039" : "\u203a"
+      font.pixelSize: 20
+      color: hov.hovered ? root.accent : root.dim
+    }
+    HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
+    TapHandler { onTapped: edge.ts.page(edge.dir) }
+    Timer {
+      id: tick
+      interval: 16; repeat: true
+      running: hov.hovered && edge.visible
+      property real speed: 3
+      onRunningChanged: speed = 3
+      onTriggered: { speed = Math.min(9, speed + 0.15); edge.ts.nudge(edge.dir * speed) }
+    }
+  }
+
+  // One horizontally scrolling row of tone chips (wheel, swipe, drag, or
+  // hover/click the ‹ › edges); the active chip scrolls into view.
   component ToneScroller: Item {
     id: ts
     property string activeKey
@@ -505,6 +543,7 @@ ShellRoot {
     implicitHeight: 38
     clip: true
     readonly property real maxX: Math.max(0, fl.contentWidth - fl.width)
+    readonly property Flickable flick: fl
     Flickable {
       id: fl
       anchors.fill: parent
@@ -550,26 +589,18 @@ ShellRoot {
     }
     onActiveKeyChanged: Qt.callLater(ensureVisible)
     onWidthChanged: Qt.callLater(ensureVisible)
-    Rectangle {
-      anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-      width: 28
-      visible: fl.contentX > 1
-      gradient: Gradient {
-        orientation: Gradient.Horizontal
-        GradientStop { position: 0; color: root.bg }
-        GradientStop { position: 1; color: Qt.alpha(root.bg, 0) }
-      }
+    // Edge zones: hovering scrolls toward that edge (mouse/touchpad without
+    // horizontal swipe); clicking jumps by most of a page.
+    function nudge(dx) {
+      scrollAnim.stop()
+      fl.contentX = Math.max(0, Math.min(ts.maxX, fl.contentX + dx))
     }
-    Rectangle {
-      anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
-      width: 28
-      visible: fl.contentX < ts.maxX - 1
-      gradient: Gradient {
-        orientation: Gradient.Horizontal
-        GradientStop { position: 0; color: Qt.alpha(root.bg, 0) }
-        GradientStop { position: 1; color: root.bg }
-      }
+    function page(dir) {
+      scrollAnim.to = Math.max(0, Math.min(ts.maxX, fl.contentX + dir * fl.width * 0.7))
+      scrollAnim.restart()
     }
+    Edge { ts: ts; dir: -1; anchors.left: parent.left }
+    Edge { ts: ts; dir: 1; anchors.right: parent.right }
   }
 
   // ---- window -------------------------------------------------------------
