@@ -50,9 +50,21 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
 - `native-host.py` — bridge from the extension; `install.sh` registers it
   (`NativeMessagingHosts/com.voicer.text_polish.json` for Brave/Chromium/Chrome).
 
+## Versions and Adjust
+- Every rewrite is saved as a numbered version. Page through them with the
+  `‹ n / N ›` pager or the **Left/Right** arrow keys (Alt+Left/Right while
+  typing in the text box). Each version keeps its tone, agent, timing and any
+  hand edits. Clicking a tone chip jumps to its latest version instead of
+  regenerating; ↻ adds a fresh version.
+- **Adjust** (Alt+J) opens a panel with tone chips, a **Length** slider
+  (Short / Moderate = the tone's default / Long), an **Emoji** slider
+  (None / Few / Moderate / Lots) and a free-text request such as "address it
+  to Priya". **Generate** adds a new version. The settings are remembered per
+  tone while the popup is open.
+
 ## Keys in the popup
 Esc close · Ctrl+Enter replace (copy if the selection wasn't editable) ·
-Ctrl+Shift+Enter insert · Ctrl+R regenerate · Alt+1–6 pick style · Alt+A next agent ·
+Ctrl+Shift+Enter insert · Ctrl+R regenerate · ←/→ versions · Alt+1–6 pick style · Alt+J adjust · Alt+A next agent ·
 Alt+O (or the Show original button) swaps the box to the full original text and back.
 **Tweet** keeps the result within X's 280-character limit (it retries up to
 twice if the agent overshoots) and shows a live `n / 280` counter while you edit. The result
