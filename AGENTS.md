@@ -37,6 +37,10 @@ learn something the next person would otherwise rediscover the hard way.
   `<...>` syntax). Web pages would gain an instruction channel. User
   instructions come only from Polish's own fields (Refine, Adjust, pins).
 
+- **Keep `FEATURES.md` current.** It's the source for the landing page and
+  marketing. When a feature ships or changes, update it in the same commit,
+  and only claim what the build actually does (numbers say where they came from).
+
 ## Architecture in one breath
 
 `polish` (launcher: reads the selection, picks the tone from `apps.conf`,

@@ -2,6 +2,8 @@
 
 Popup that rewrites highlighted text (Proofread / Tweet / Casual / Punchy /
 Concise / Detailed / Formal / Witty) with an AI agent CLI, then Replaces or Inserts it back.
+Also drafts replies and summarizes/explains text. Full feature list for the
+landing page: [FEATURES.md](FEATURES.md).
 
 ## Agents
 Pick the agent from the pill in the popup's top-left corner, or cycle with
