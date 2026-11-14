@@ -92,14 +92,13 @@ The gear in the header (Alt+S or Ctrl+,) opens Settings:
 - **Tone chips**: tap to show or hide a tone, drag to reorder the row, Reset
   to restore. Alt+1–8 follow the shown chips in your order; hidden tones still
   work from the browser menu and `apps.conf`.
-- **Show changes**, **Open Proofread on changes**, **Shortcut hints**,
-  **Prepare next tone**.
+- **Show changes**, **Open Proofread on changes**, **Prepare next tone**.
 
 ## Shortcut hints
 Hold Alt for about a third of a second and small keycaps appear on each
 control: 1–8 on the tone chips, A agent, M Rewrite/Reply, S settings,
 J Adjust, D Changes, O Original. They vanish when you let go, and a quick
-Alt+key press never flashes them. Turn them off in Settings.
+Alt+key press never flashes them. (No setting: they only show while you hold Alt.)
 
 Saved per user in `~/.local/state/text-polish/settings.json` (not in this repo).
 

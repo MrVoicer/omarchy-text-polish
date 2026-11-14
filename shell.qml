@@ -32,12 +32,12 @@ ShellRoot {
   ]
   // ---- settings (per user, outside the repo) ------------------------------
   // order: all tones in your row order. tones: which of them show.
-  // showChanges: the Changes view (#4). keyHints: hold Alt to see shortcuts.
+  // showChanges: the Changes view (#4).
   // autoChanges: Proofread opens on Changes. prefetch: prepare the next tone
   // in the background so switching is instant (costs an extra agent run).
   readonly property string settingsPath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/text-polish/settings.json"
   readonly property var defaultSettings: ({ order: styles.map(function(t) { return t.key }), tones: styles.map(function(t) { return t.key }),
-                                            showChanges: true, autoChanges: true, prefetch: false, keyHints: true })
+                                            showChanges: true, autoChanges: true, prefetch: false })
   property var settings: defaultSettings
   function setting(k) { return settings[k] !== undefined ? settings[k] : defaultSettings[k] }
   function setSetting(k, val) {
@@ -91,7 +91,7 @@ ShellRoot {
 
   // Hold Alt (~0.3s, so quick Alt+key combos don't flash) to see shortcut hints.
   property bool altHeld: false
-  Timer { id: altTimer; interval: 300; onTriggered: root.altHeld = root.setting("keyHints") }
+  Timer { id: altTimer; interval: 300; onTriggered: root.altHeld = true }
   function altDown() { if (!altHeld && !altTimer.running) altTimer.start() }
   function altUp() { altTimer.stop(); altHeld = false }
   function toggleTone(k) {
@@ -1560,12 +1560,6 @@ ShellRoot {
           enabled: root.setting("showChanges")
           checked: root.setting("autoChanges")
           onToggled: root.setSetting("autoChanges", !checked)
-        }
-        Toggle {
-          label: "Shortcut hints"
-          detail: "Hold Alt to see each control's key (1\u20138 on the tones, S on the gear, and so on)."
-          checked: root.setting("keyHints")
-          onToggled: root.setSetting("keyHints", !checked)
         }
         Toggle {
           label: "Prepare next tone"
