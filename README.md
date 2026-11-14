@@ -91,6 +91,15 @@ With Claude, text appears as it is written (`stream-json` deltas through
 `stream_filter.py`). The first words show in about 2s instead of waiting for
 the whole result. Other agents return all at once.
 
+## Refine
+Press **/** (or the ✎ button by ↻) for a one-line field above the text: type a
+one-off instruction such as "address it to Priya" and press **Enter**. Rewrite
+and Reply rework the version on screen (keeping its tone), Read re-reads the
+original with your request; either way it's a new version tagged "refined".
+Esc closes the field. Its 📌 saves the instruction as a pin for the current
+tone instead. Instructions are never read from the text itself: the selection
+is untrusted, so `{{...}}`-style markup in it is just text.
+
 ## Changes view
 **Changes** (Alt+D) shows a word-level diff of what the AI did to your text:
 removed words struck through in red, added words highlighted, plus a count

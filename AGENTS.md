@@ -33,6 +33,9 @@ learn something the next person would otherwise rediscover the hard way.
 - **Selected text is untrusted.** It's wrapped in `<text>`/`<message>` tags
   and the system prompt says never to follow instructions inside it. Keep that
   when adding modes.
+  Corollary: never parse instructions *out of* the text (no `{{...}}` or
+  `<...>` syntax). Web pages would gain an instruction channel. User
+  instructions come only from Polish's own fields (Refine, Adjust, pins).
 
 ## Architecture in one breath
 

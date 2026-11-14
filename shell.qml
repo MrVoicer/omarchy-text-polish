@@ -408,9 +408,9 @@ ShellRoot {
     var v = {
       id: nextId++, style: s, agent: agent, agentLabel: agentLabel,
       length: opts.length || "", emoji: opts.emoji || "", note: (opts.note || "").trim(), pins: pins,
-      source: baseSource(opts.fromOriginal), edited: false,
+      source: opts.source !== undefined ? opts.source : baseSource(opts.fromOriginal), edited: false, refined: !!opts.refined,
       mode: mode, intent: mode === "reply" ? (opts.intent !== undefined ? opts.intent : intent).trim() : "",
-      draft: replyDraft(opts.fromOriginal), partial: "",
+      draft: opts.draft !== undefined ? opts.draft : replyDraft(opts.fromOriginal), partial: "",
       busy: true, ok: false, text: "", ms: 0, startedAt: Date.now(), bg: !!opts.background
     }
     if (v.bg) {
@@ -604,6 +604,39 @@ ShellRoot {
   }
 
   // fromOriginal (Shift+click or Ctrl+Shift+R): rewrite the original selection, ignoring edits.
+  // ---- refine (/ key) ------------------------------------------------------
+  // A one-off instruction applied to the version on screen: Rewrite and Reply
+  // rework that version's text; Read re-reads the original with the request.
+  property bool refineOpen: false
+  property string pinnedFlash: ""
+  Timer { id: pinnedFlashTimer; interval: 1800; onTriggered: root.pinnedFlash = "" }
+  function openRefine() {
+    if (view !== "main") return
+    agentMenu = false
+    refineOpen = true
+    refineField.forceActiveFocus()
+  }
+  function closeRefine() { refineOpen = false; refineField.text = ""; blurText() }
+  function refine(text) {
+    text = text.trim()
+    var c = at()
+    if (!text || !c || c.busy) return
+    var o = { length: c.length, emoji: c.emoji, note: text, intent: c.intent, refined: true }
+    if (c.ok && c.mode === "rewrite") o.source = c.text
+    if (c.ok && c.mode === "reply") o.draft = c.text
+    closeRefine()
+    generate(c.style, o)
+  }
+  function pinRefine() {
+    var t = refineField.text.trim()
+    if (!t) return
+    if (addPin(style, t)) {
+      refineField.text = ""
+      pinnedFlash = "Pinned for " + styleLabel(style) + ": applies from the next version"
+    } else pinnedFlash = "Up to " + maxPins + " pins per tone (manage them in Adjust)"
+    pinnedFlashTimer.restart()
+  }
+
   function regenerate(fromOriginal) {
     var c = at()
     var o = c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent } : {}
@@ -660,7 +693,8 @@ ShellRoot {
            : v.mode === "read" ? "Read, " + styleLabel(v.style) : styleLabel(v.style)]
     if (v.intent) t.push("\u201C" + (v.intent.length > 24 ? v.intent.slice(0, 23) + "\u2026" : v.intent) + "\u201D")
     if (v.draft) t.push("from your draft")
-    if (v.source) t.push("from your edit")
+    if (v.refined) t.push("refined")
+    else if (v.source) t.push("from your edit")
     if (v.edited) t.push("edited")
     if (v.length) t.push(v.length === "short" ? "short" : "long")
     if (v.emoji) t.push(v.emoji === "none" ? "no emoji" : v.emoji + " emoji")
@@ -1045,8 +1079,9 @@ ShellRoot {
       // Alt press/release bubbles up here from whichever control has focus.
       Keys.onPressed: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altDown() }
       Keys.onReleased: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altUp() }
-      readonly property bool typing: editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus
-      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : Qt.quit() }
+      readonly property bool typing: editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus || refineField.activeFocus
+      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : root.refineOpen ? root.closeRefine() : Qt.quit() }
+      Shortcut { sequence: "/"; enabled: root.view === "main" && !card.typing; onActivated: root.openRefine() }
       Shortcut { sequence: "Alt+D"; enabled: root.view === "main"; onActivated: root.toggleDiff() }
       Shortcut { sequences: ["Ctrl+,", "Alt+S"]; onActivated: root.openSettings() }
       Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; onActivated: root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.mode === "rewrite" && root.editable ? root.apply("replace") : root.copy()) }
@@ -1176,6 +1211,54 @@ ShellRoot {
               color: draftMouse.containsMouse ? root.surface2 : "transparent"
               Text { anchors.centerIn: parent; text: "\u{F048A}"; textFormat: Text.PlainText; color: root.accent; font.family: root.font; font.pixelSize: 16 }
               MouseArea { id: draftMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.draftReply() }
+            }
+          }
+        }
+
+        // Refine: one-off instruction for the version on screen (/ opens, Enter applies, Esc closes)
+        Rectangle {
+          visible: root.refineOpen
+          Layout.fillWidth: true
+          implicitHeight: 44
+          radius: 22
+          color: root.surface
+          border.width: 1
+          border.color: refineField.activeFocus ? root.accent : root.faint
+          RowLayout {
+            anchors { fill: parent; leftMargin: 14; rightMargin: 6 }
+            spacing: 6
+            Text { text: "\u{F03EB}"; textFormat: Text.PlainText; color: root.accent; font.family: root.font; font.pixelSize: 15 }
+            TextField {
+              id: refineField
+              Layout.fillWidth: true
+              placeholderText: root.pinnedFlash !== "" ? root.pinnedFlash
+                             : root.mode === "read" ? "Refine: e.g. focus on the deadlines \u00b7 Enter"
+                             : "Refine: e.g. address it to Priya, make it shorter \u00b7 Enter"
+              placeholderTextColor: root.pinnedFlash !== "" ? root.accent : root.faint
+              color: root.fg
+              selectionColor: root.surface2
+              font.family: root.font
+              font.pixelSize: 14
+              background: null
+              onAccepted: root.refine(text)
+            }
+            Rectangle {
+              visible: refineField.text.trim() !== ""
+              implicitWidth: 32; implicitHeight: 32; radius: 16
+              color: refPinMouse.containsMouse ? root.surface2 : "transparent"
+              Text { anchors.centerIn: parent; text: "\u{F0403}"; textFormat: Text.PlainText; color: root.dim; font.family: root.font; font.pixelSize: 15 }
+              MouseArea {
+                id: refPinMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                onClicked: root.pinRefine()
+                ToolTip.visible: containsMouse; ToolTip.delay: 400
+                ToolTip.text: "Pin: use this every time for " + root.styleLabel(root.style)
+              }
+            }
+            Rectangle {
+              implicitWidth: 32; implicitHeight: 32; radius: 16
+              color: refGoMouse.containsMouse ? root.surface2 : "transparent"
+              Text { anchors.centerIn: parent; text: "\u{F048A}"; textFormat: Text.PlainText; color: root.accent; font.family: root.font; font.pixelSize: 15 }
+              MouseArea { id: refGoMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.refine(refineField.text) }
             }
           }
         }
@@ -1378,6 +1461,12 @@ ShellRoot {
                   }
                 }
               }
+              IconButton {
+                glyph: "\u{F03EB}"; enabled: !root.busy && root.current.ok
+                onClicked: root.refineOpen ? root.closeRefine() : root.openRefine()
+                ToolTip.visible: refHover.hovered; ToolTip.delay: 400; ToolTip.text: "Refine this version (/)"
+                HoverHandler { id: refHover }
+              }
               IconButton { glyph: "\u{F0450}"; enabled: !root.busy; onClicked: (mods) => root.regenerate(mods & Qt.ShiftModifier) }
             }
           }
@@ -1445,7 +1534,7 @@ ShellRoot {
               contentItem: Text {
                 text: "Esc close \u00b7 Ctrl+Enter " + (root.editable ? "replace" : "copy") + " \u00b7 Ctrl+Shift+Enter insert\n"
                     + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate (Shift+\u21BB or Ctrl+Shift+R: from original) \u00b7 Alt+1\u20138 tone\n"
-                    + "Hold Alt to see keys \u00b7 Alt+M rewrite/reply/read \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
+                    + "/ refine \u00b7 Hold Alt to see keys \u00b7 Alt+M rewrite/reply/read \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
                 textFormat: Text.PlainText
                 color: root.fg
                 font.family: root.font
