@@ -1,7 +1,7 @@
 # Polish — AI rewrite for selected text
 
-Popup that rewrites highlighted text (Proofread / Casual / Punchy / Concise /
-Detailed / Formal / Witty / Tweet) with an AI agent CLI, then Replaces or Inserts it back.
+Popup that rewrites highlighted text (Proofread / Tweet / Casual / Punchy /
+Concise / Detailed / Formal / Witty) with an AI agent CLI, then Replaces or Inserts it back.
 
 ## Agents
 Pick the agent from the pill in the popup's top-left corner, or cycle with
@@ -52,8 +52,9 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
 
 ## Versions and Adjust
 - Every rewrite is saved as a numbered version. Page through them with the
-  `‹ n / N ›` pager or the **Left/Right** arrow keys (Alt+Left/Right while
-  typing in the text box). Each version keeps its tone, agent, timing and any
+  `‹ n / N ›` pager or the **Left/Right** arrow keys. While the cursor is in the
+  text box, arrows move the cursor; Alt+Left/Right still pages, and clicking
+  anywhere outside the text hands the arrows back to paging. Each version keeps its tone, agent, timing and any
   hand edits. Clicking a tone chip jumps to its latest version instead of
   regenerating; ↻ adds a fresh version.
 - **Adjust** (Alt+J) opens a panel with tone chips, a **Length** slider

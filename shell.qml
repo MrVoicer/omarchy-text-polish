@@ -22,13 +22,13 @@ ShellRoot {
 
   readonly property var styles: [
     { key: "proofread", label: "Proofread" },
+    { key: "tweet", label: "Tweet" },
     { key: "casual", label: "Casual" },
     { key: "punchy", label: "Punchy" },
     { key: "concise", label: "Concise" },
     { key: "detailed", label: "Detailed" },
     { key: "formal", label: "Formal" },
-    { key: "witty", label: "Witty" },
-    { key: "tweet", label: "Tweet" }
+    { key: "witty", label: "Witty" }
   ]
   function styleLabel(k) {
     for (var i = 0; i < styles.length; i++) if (styles[i].key === k) return styles[i].label
@@ -201,7 +201,7 @@ ShellRoot {
     loadingEditor = false
     copied = false
   }
-  onViChanged: { var v = at(); if (v) style = v.style; showVersion() }
+  onViChanged: { var v = at(); if (v) style = v.style; showVersion(); if (view === "main") blurText() }
 
   function go(delta) {
     var n = vi + delta
@@ -269,6 +269,10 @@ ShellRoot {
   }
 
   // ---- actions ------------------------------------------------------------
+  // Clicking anything but a text box takes the cursor out of the text, so the
+  // Left/Right arrows go back to paging versions.
+  function blurText() { focusSink.forceActiveFocus() }
+
   function finalText() { return editor.text }
 
   function copy() {
@@ -321,7 +325,7 @@ ShellRoot {
         font.pixelSize: 14
       }
     }
-    MouseArea { id: chipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: chip.clicked() }
+    MouseArea { id: chipMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); chip.clicked() } }
   }
 
   component IconButton: Rectangle {
@@ -332,7 +336,7 @@ ShellRoot {
     color: ibMouse.containsMouse && ib.enabled ? root.surface2 : root.surface
     opacity: enabled ? 1 : 0.4
     Text { anchors.centerIn: parent; text: ib.glyph; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 16 }
-    MouseArea { id: ibMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (ib.enabled) ib.clicked() }
+    MouseArea { id: ibMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); if (ib.enabled) ib.clicked() } }
   }
 
   component ActionButton: Rectangle {
@@ -521,13 +525,14 @@ ShellRoot {
       color: root.bg
       border.width: 1
       border.color: root.faint
-      MouseArea { anchors.fill: parent; onClicked: root.agentMenu = false }   // swallow clicks so the scrim doesn't close
+      MouseArea { anchors.fill: parent; onClicked: { root.agentMenu = false; root.blurText() } }   // swallow clicks so the scrim doesn't close
 
       opacity: 0; scale: 0.97
       Component.onCompleted: { opacity = 1; scale = 1 }
       Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
       Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
+      Item { id: focusSink; focus: true }
       readonly property bool typing: editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus
       Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.view = "main" : Qt.quit() }
       Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; onActivated: root.view === "adjust" ? root.generateAdjusted() : (root.editable ? root.apply("replace") : root.copy()) }
@@ -579,7 +584,7 @@ ShellRoot {
               Text { text: root.agentLabel; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 13 }
               Text { text: "\u{F0140}"; textFormat: Text.PlainText; color: root.dim; font.family: root.font; font.pixelSize: 13 }
             }
-            MouseArea { id: pillMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.agentMenu = !root.agentMenu }
+            MouseArea { id: pillMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.agentMenu = !root.agentMenu } }
           }
 
           Text {
@@ -708,7 +713,7 @@ ShellRoot {
                   color: root.showOriginal ? root.accent : root.fg
                   font.family: root.font; font.pixelSize: 13
                 }
-                MouseArea { id: origMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.showOriginal = !root.showOriginal }
+                MouseArea { id: origMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.showOriginal = !root.showOriginal } }
               }
               // Version pager: < n / N >
               Rectangle {
@@ -725,7 +730,7 @@ ShellRoot {
                     width: 30; height: 30; radius: 15
                     color: prevMouse.containsMouse && root.vi > 0 ? root.surface2 : "transparent"
                     Text { anchors.centerIn: parent; text: "\u{F0141}"; textFormat: Text.PlainText; font.family: root.font; font.pixelSize: 16; color: root.vi > 0 ? root.fg : root.faint }
-                    MouseArea { id: prevMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.go(-1) }
+                    MouseArea { id: prevMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.go(-1) } }
                   }
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -739,7 +744,7 @@ ShellRoot {
                     width: 30; height: 30; radius: 15
                     color: nextMouse.containsMouse && root.vi < root.versions.length - 1 ? root.surface2 : "transparent"
                     Text { anchors.centerIn: parent; text: "\u{F0142}"; textFormat: Text.PlainText; font.family: root.font; font.pixelSize: 16; color: root.vi < root.versions.length - 1 ? root.fg : root.faint }
-                    MouseArea { id: nextMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.go(1) }
+                    MouseArea { id: nextMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.go(1) } }
                   }
                 }
               }

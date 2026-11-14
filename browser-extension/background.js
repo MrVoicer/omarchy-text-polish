@@ -3,13 +3,13 @@
 const HOST = "com.voicer.text_polish";
 const STYLES = [
   ["proofread", "Proofread"],
+  ["tweet", "Tweet (≤ 280 chars)"],
   ["casual", "Casual"],
   ["punchy", "Punchy"],
   ["concise", "Concise"],
   ["detailed", "Detailed"],
   ["formal", "Formal"],
   ["witty", "Witty"],
-  ["tweet", "Tweet (≤ 280 chars)"],
 ];
 
 chrome.runtime.onInstalled.addListener(() => {
