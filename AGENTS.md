@@ -103,6 +103,17 @@ source window and paste). Browser: `browser-extension/` →
   which sends exact mods to one window. It needs a keycode (`key = "z"` gives
   "key not found"): look it up with `xkbcli how-to-type --layout <l> z`. Test by
   holding mods with `wtype -M logo -M alt -s 1500 -m alt -m logo &`.
+- **Locks and long-lived children.** `flock` locks live on a file descriptor;
+  anything still running after the script exits (wl-copy serving the
+  clipboard, the toast, the popup) must not inherit it, or the lock is held for
+  its whole life and the next run freezes. Close it on those commands
+  (`8>&-`, `9>&-`) and use `flock -w` timeouts.
+- **Temp files:** per run, via `mktemp` in the private runtime dir
+  (`lib.sh polish_run_dir`), cleaned by a trap. Don't create them inside
+  `$(...)`: that's a subshell, so it can't register them for cleanup.
+- **Get an independent review now and then.** A second model, adversarial and
+  not told our conclusions, found 18 real issues (`docs/reviews/`). Verify each
+  finding against the code before fixing; rerun it after big changes.
 - **Don't rely on desktop notifications for anything interactive.** Users run
   Do Not Disturb (Omarchy: `omarchy-shell notifications isDnd`), which hides
   them entirely. Undo uses Polish's own toast (`toast.qml`, no keyboard focus).

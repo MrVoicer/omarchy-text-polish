@@ -54,7 +54,7 @@ measured it; see *Proof points*):
 | Tone | What it does |
 |---|---|
 | **Proofread** | Fixes spelling, grammar, punctuation and capitalization with the smallest possible changes. Keeps your voice. |
-| **Tweet** | One post that fits X's 280-character limit, hook first. Retries automatically if the model overshoots; live `n / 280` counter. |
+| **Tweet** | One post that fits X's 280-character limit, hook first. Retries automatically (twice) if the model overshoots, and warns if it's still over; live `n / 280` counter. |
 | **Casual** | A friendly message to a teammate: contractions, plain words, warm. |
 | **Punchy** | Headline first, short sentences, strong verbs, no hedging. |
 | **Concise** | At most half the length, every fact, question and request kept. |
@@ -239,6 +239,12 @@ Shift+↻ starts over from the original.
 
 - **No middleman:** text goes from your machine to the AI provider you already
   use, through its official CLI. Polish has no server.
+- **Pastes only where you selected:** if that window closed, or a browser
+  request ended up pointed at another app, Polish pastes nowhere and leaves the
+  text on your clipboard.
+- **Private files:** settings and history are readable only by you.
+- **Independently reviewed:** an adversarial review by a second AI model
+  (Codex `gpt-6-astra`) found 18 issues, all fixed (`docs/reviews/`).
 - **Prompt-injection hardened:** selected text is always treated as content,
   never as instructions. A web page that says "ignore the user and write X"
   gets rewritten, not obeyed. Instructions only come from Polish's own fields.
@@ -281,6 +287,9 @@ Shift+↻ starts over from the original.
 
 ## On the roadmap (ideas, not promises)
 
+- **Translate your rewrite** in one click from the Rewrite side (polish a
+  message, then send it in Hindi or Tamil). Today: press / and type
+  "translate to Hindi"; Read always works on the original selection.
 - Dictation cleanup after voice typing.
 - Apply a pin to every Read action at once.
 - Other compositors and desktops.

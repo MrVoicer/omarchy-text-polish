@@ -55,7 +55,8 @@ ShellRoot {
   }
   function setSetting(k, val) { var c = {}; c[k] = val; updateSettings(c) }
   function writeSettings() {
-    Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" > "$1.tmp" && mv "$1.tmp" "$1"',
+    // One writer at a time (flock), each with its own temp file, then an atomic rename.
+    Quickshell.execDetached(["sh", "-c", 'umask 077; mkdir -p "$(dirname "$1")" && exec 7>"$1.lock" && flock 7 && t=$(mktemp "$1.XXXXXX") && printf "%s\\n" "$2" > "$t" && mv -f "$t" "$1"',
                              "sh", settingsPath, JSON.stringify(settings, null, 2)])
   }
   function settingsLoaded(fromFile) {
@@ -362,26 +363,29 @@ ShellRoot {
 
   // Editing a pin in the Adjust box: the one-time text is set aside meanwhile.
   property int editingPin: -1
+  property string editingPinTone: ""       // the tone that pin belongs to
   property string stashedNote: ""
   function editPin(i) {
     if (editingPin === i) { stopEditingPin(); return }
-    if (editingPin < 0) stashedNote = adjustNote.text
+    stopEditingPin()                       // save the pin being edited first
+    stashedNote = adjustNote.text
     editingPin = i
+    editingPinTone = adjStyle
     adjustNote.text = pinsFor(adjStyle)[i].text
     adjustNote.forceActiveFocus()
     adjustNote.cursorPosition = adjustNote.length
   }
   function stopEditingPin() {
     if (editingPin < 0) return
-    var t = adjustNote.text.trim()
-    if (!t) deletePin(adjStyle, editingPin); else updatePin(adjStyle, editingPin, t)
+    var t = adjustNote.text.trim(), tone = editingPinTone || adjStyle
+    if (!t) deletePin(tone, editingPin); else updatePin(tone, editingPin, t)
     editingPin = -1
     adjustNote.text = stashedNote
   }
   function deleteEditingPin() {
     var i = editingPin
     editingPin = -1
-    deletePin(adjStyle, i)
+    deletePin(editingPinTone || adjStyle, i)
     adjustNote.text = stashedNote
   }
   function pinBoxText() {
@@ -424,7 +428,7 @@ ShellRoot {
     agentMenu = false
     if (id === agent) return
     agent = id
-    Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" > "$1"', "sh", statePath, id])
+    Quickshell.execDetached(["sh", "-c", 'umask 077; mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" > "$1"', "sh", statePath, id])
     // New agent: add a version of the same tone and adjustments; older versions stay.
     var c = at()
     generate(c ? c.style : style, c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent } : {})
@@ -479,7 +483,9 @@ ShellRoot {
   // What the next generation rewrites: your edited text if you changed the
   // version on screen, otherwise whatever that version was rewritten from.
   function baseSource(fromOriginal) {
-    if (fromOriginal || mode === "reply") return ""     // a reply always answers the original message
+    // Only Rewrite reworks your edited text; Reply answers, and Read reads, the
+    // original selection (switching modes must not carry an edit across).
+    if (fromOriginal || mode !== "rewrite") return ""
     var c = at()
     if (!c || c.mode !== "rewrite") return ""
     if (c.ok && c.edited && c.text.trim() !== "") return c.text
@@ -490,7 +496,10 @@ ShellRoot {
   function replyDraft(fromOriginal) {
     if (mode !== "reply" || fromOriginal) return ""
     var c = at()
-    return c && c.mode === "reply" && c.ok && c.edited ? c.text : ""
+    if (!c || c.mode !== "reply" || !c.ok) return ""
+    // Your newest hand edit, else the draft this version was itself made from,
+    // so a decision you typed survives any number of tone changes.
+    return c.edited ? c.text : (c.draft || "")
   }
 
   // Prefetched versions wait here, out of the pager, until you pick their tone.
@@ -505,7 +514,8 @@ ShellRoot {
       mode: mode, intent: mode === "reply" ? (opts.intent !== undefined ? opts.intent : intent).trim() : "",
       draft: opts.draft !== undefined ? opts.draft : replyDraft(opts.fromOriginal), partial: "",
       lang: s === "translate" ? (opts.lang || translateTo()) : "",
-      busy: true, ok: false, text: "", ms: 0, startedAt: Date.now(), bg: !!opts.background
+      busy: true, ok: false, text: "", ms: 0, startedAt: Date.now(), bg: !!opts.background,
+      cfg: toneConfigKey(s), warning: ""
     }
     if (v.bg) {
       prefetched = prefetched.concat([v])
@@ -555,10 +565,12 @@ ShellRoot {
       if (!b || !b.busy) return
       if (kind === "P") b.partial += value
       else if (kind === "R") b.partial = ""
+      else if (kind === "W") b.warning = String(value)
       else if (kind === "F" || kind === "E") finishBg(b, kind === "F", kind === "F" ? value : (value || "Rewrite failed."))
       return
     }
     if (!versions[i].busy) return
+    if (kind === "W") { versions[i].warning = String(value); return }   // shown once it finishes
     if (kind === "P" || kind === "R") {
       // Streaming text: mutate in place (no list copy per chunk) and paint it.
       var v = versions[i]
@@ -609,11 +621,14 @@ ShellRoot {
     return false
   }
   // Only a prefetch made for what a fresh pick would rewrite now (same agent, same source).
+  // What a tone's output depends on besides the text: its pins and, for a custom
+  // tone, its definition. A prefetch made under a different config is stale.
+  function toneConfigKey(s) { return JSON.stringify([activePinText(s), customByKey(s)]) }
   function findPrefetch(s) {
     var src = baseSource(false)
     for (var i = 0; i < prefetched.length; i++) {
       var b = prefetched[i]
-      if (b.style === s && b.mode === mode && b.agent === agent && b.source === src) return b
+      if (b.style === s && b.mode === mode && b.agent === agent && b.source === src && b.cfg === toneConfigKey(s)) return b
     }
     return null
   }
@@ -761,7 +776,7 @@ ShellRoot {
   }
   function openSettings() {
     agentMenu = false
-    if (view === "adjust") saveAdjust()
+    if (view === "adjust") { stopEditingPin(); saveAdjust() }
     view = view === "settings" ? "main" : "settings"
     blurText()
   }
@@ -859,12 +874,13 @@ ShellRoot {
               app: Quickshell.env("POLISH_APP") || "", src: original.slice(0, 300), text: text }
     history = [e].concat(history).slice(0, historyMax)
     Quickshell.execDetached(["sh", "-c",
-      'mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" >> "$1" && tail -n "$3" "$1" > "$1.tmp" && mv "$1.tmp" "$1"',
+      // Append + trim under the same lock as Clear, so neither can undo the other.
+      'umask 077; mkdir -p "$(dirname "$1")" && exec 7>"$1.lock" && flock 7 && printf "%s\\n" "$2" >> "$1" && t=$(mktemp "$1.XXXXXX") && tail -n "$3" "$1" > "$t" && mv -f "$t" "$1"',
       "sh", historyPath, JSON.stringify(e), String(historyMax)])
   }
   function clearHistory() {
     history = []
-    Quickshell.execDetached(["rm", "-f", historyPath])
+    Quickshell.execDetached(["sh", "-c", 'exec 7>"$1.lock" && flock 7 && rm -f "$1"', "sh", historyPath])
   }
   function openHistory() {
     agentMenu = false; langMenu = false
@@ -1281,7 +1297,7 @@ ShellRoot {
       Shortcut { sequence: "/"; enabled: root.view === "main" && !card.typing; onActivated: root.openRefine() }
       Shortcut { sequence: "Alt+D"; enabled: root.view === "main"; onActivated: root.toggleDiff() }
       Shortcut { sequences: ["Ctrl+,", "Alt+S"]; onActivated: root.openSettings() }
-      Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: root.view !== "settings"; onActivated: root.view === "tone" ? root.saveToneEditor() : root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.mode === "rewrite" && root.editable ? root.apply("replace") : root.copy()) }
+      Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: root.view === "main" || root.view === "adjust" || root.view === "tone"; onActivated: root.view === "tone" ? root.saveToneEditor() : root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.mode === "rewrite" && root.editable ? root.apply("replace") : root.copy()) }
       Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.view === "main" && root.mode !== "read" && (root.editable || root.mode === "reply"); onActivated: root.apply(root.mode === "reply" ? "paste" : "insert") }
       Shortcut { sequence: "Alt+M"; enabled: root.view === "main"; onActivated: root.cycleMode() }
       Shortcut { sequence: "Ctrl+R"; enabled: root.view === "main"; onActivated: root.regenerate(false) }
@@ -1777,6 +1793,7 @@ ShellRoot {
             horizontalAlignment: Text.AlignHCenter
             text: {
               var v = root.current
+              if (v && !v.busy && v.warning) return "\u26A0 " + v.warning
               var head = !v ? "Starting\u2026"
                        : v.busy ? "Generating with " + v.agentLabel
                        : (v.ok ? "Generated by " : "Failed with ") + v.agentLabel + " in " + root.fmtSecs(v.ms)
@@ -1784,7 +1801,7 @@ ShellRoot {
             }
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            color: root.dim
+            color: root.current && !root.current.busy && root.current.warning ? root.danger : root.dim
             font.family: root.font
             font.pixelSize: 11
           }

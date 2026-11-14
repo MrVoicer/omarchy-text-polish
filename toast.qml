@@ -3,7 +3,9 @@
 // desktop notifications, so it also shows with Do Not Disturb on. Takes no
 // keyboard focus. Undo runs `apply.sh undo`; it closes itself after 10s
 // (paused while the mouse is over it).
-// Env: POLISH_TOAST_MSG, POLISH_DIR, POLISH_MONITOR.
+// Also used for short messages (lib.sh polish_toast): kind "info" or "warn"
+// shows no Undo button.
+// Env: POLISH_TOAST_MSG, POLISH_TOAST_KIND (undo|info|warn), POLISH_DIR, POLISH_MONITOR.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -13,6 +15,7 @@ ShellRoot {
   id: root
   readonly property string msg: Quickshell.env("POLISH_TOAST_MSG") || "Replaced"
   readonly property string dir: Quickshell.env("POLISH_DIR") || ""
+  readonly property string kind: Quickshell.env("POLISH_TOAST_KIND") || "undo"
   readonly property int lifetime: 10000
   property real left: lifetime
 
@@ -81,8 +84,8 @@ ShellRoot {
         spacing: 12
         Text {
           anchors.verticalCenter: parent.verticalCenter
-          text: "\u{F012C}"
-          color: root.accent; font.family: root.font; font.pixelSize: 15
+          text: root.kind === "warn" ? "\u{F0026}" : root.kind === "info" ? "\u{F02FC}" : "\u{F012C}"
+          color: root.kind === "warn" ? root.c("red", "#e67e80") : root.accent; font.family: root.font; font.pixelSize: 15
         }
         Text {
           anchors.verticalCenter: parent.verticalCenter
@@ -91,6 +94,7 @@ ShellRoot {
           color: root.fg; font.family: root.font; font.pixelSize: 14
         }
         Rectangle {
+          visible: root.kind === "undo"
           anchors.verticalCenter: parent.verticalCenter
           width: undoText.implicitWidth + 28; height: 34; radius: 17
           color: undoMouse.containsMouse ? Qt.lighter(root.fg, 1.08) : root.fg
@@ -103,6 +107,7 @@ ShellRoot {
           MouseArea { id: undoMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.undo() }
         }
         Text {
+          visible: root.kind === "undo"
           anchors.verticalCenter: parent.verticalCenter
           text: "Super+Alt+Z"
           color: root.faint; font.family: root.font; font.pixelSize: 11

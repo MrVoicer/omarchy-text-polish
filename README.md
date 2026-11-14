@@ -112,6 +112,18 @@ exactly; Insert is a single paste so one undo removes it. Undo right away: if
 you've typed more, Ctrl+Z undoes your typing first. Terminals have no undo, so
 there it puts your original text on the clipboard instead.
 
+## Safety
+- Replace/Insert/Paste paste only into the window the text came from, and only
+  after confirming it's focused; if it's gone, nothing is pasted and a toast
+  says the text is on the clipboard. Browser requests carry the browser window
+  the request came from; if that isn't a browser, the popup is Copy-only.
+- Selections over 20,000 characters are refused (instead of rewriting part of
+  text that Replace would overwrite whole).
+- Runtime files live in `$XDG_RUNTIME_DIR/text-polish` (or `~/.cache/text-polish`),
+  never a shared `/tmp` path; settings and history are `600` in a `700` folder.
+- One launch at a time (lock + per-launch input file); settings, history and
+  undo writes are locked and atomic; each agent run has its own temp files.
+
 ## History
 The results you use (Replace, Insert, Paste, Copy) and the one on screen when
 you close are saved: **Alt+H** or the clock button, or tap **Right Alt with

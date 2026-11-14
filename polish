@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # polish — open the AI rewrite popup for the selected text.
 #   polish                       use the primary selection (whatever is highlighted)
-#   polish --file F [--style S] [--editable yes|no] [--mode rewrite|reply|read] [--url U]
-#                                (used by the browser extension)
+#   polish --file F [--style S] [--editable yes|no] [--mode rewrite|reply|read]
+#          [--url U] [--window ADDR]   (used by the browser extension's native host)
 #   polish --undo                undo the last Replace/Insert/Paste (SUPER+ALT+Z)
 #   polish --history             open the history of past results
 # With nothing selected, polish opens the history.
 # Without --style, the starting tone comes from apps.conf (window class/title/url).
 set -uo pipefail
 DIR=$(dirname "$(readlink -f "$0")")
+# shellcheck source=lib.sh
+. "$DIR/lib.sh"
 [[ ${1:-} == --undo ]] && exec "$DIR/apply.sh" undo
-# Already open? Leave it alone. Pressing Right Alt inside the popup (as the
-# Alt of Alt+M, Alt+1...) fires the global shortcut too; relaunching would
-# close the popup you are using.
-if pgrep -f "quickshell -p $DIR/shell.qml" >/dev/null 2>&1; then exit 0; fi
-style="" editable=unknown file="" mode=rewrite url="" view=main
+MAX_CHARS=20000
+
+style="" editable=unknown file="" mode=rewrite url="" view=main window=""
 while (($#)); do
   case $1 in
     --style) style=$2; shift 2 ;;
@@ -22,28 +22,60 @@ while (($#)); do
     --editable) editable=$2; shift 2 ;;
     --mode) mode=$2; shift 2 ;;
     --url) url=$2; shift 2 ;;
+    --window) window=$2; shift 2 ;;
     --history) view=history; shift ;;
     *) echo "unknown arg $1" >&2; exit 2 ;;
   esac
 done
-run="${XDG_RUNTIME_DIR:-/tmp}/text-polish"; mkdir -p -m 700 "$run"
-input="$run/input.txt"
+run=$(polish_run_dir) || exit 1
+state=$(polish_state_dir)
+# A browser hand-off file is ours to delete, whatever happens next.
+cleanup_file() { [[ -n $file && $file == "$run"/browser-*.txt ]] && rm -f -- "$file"; }
+
+# One launch at a time: the lock covers checking for a popup and starting one,
+# so two quick presses can't both get through. Already open? Leave it alone:
+# pressing Right Alt inside the popup (as the Alt of Alt+M, Alt+1...) fires the
+# global shortcut too, and relaunching would close the popup you are using.
+exec 9>"$run/launch.lock"
+flock -n 9 || { cleanup_file; exit 0; }
+if pgrep -f "quickshell -p $DIR/shell.qml" >/dev/null 2>&1; then cleanup_file; exit 0; fi
+
+# Each launch gets its own input file (old ones are swept after a day).
+find "$run" -maxdepth 1 -name 'input-*.txt' -mmin +1440 -delete 2>/dev/null
+input=$(mktemp "$run/input-XXXXXX.txt") || exit 1
 if [[ -n $file ]]; then
-  cp -- "$file" "$input"
-  [[ $file == "$run"/browser-*.txt ]] && rm -f -- "$file"
+  cp -- "$file" "$input"; cleanup_file
 else
   timeout 2 wl-paste --primary --no-newline --type text >"$input" 2>/dev/null || : >"$input"
 fi
 [[ $view == history ]] && : >"$input"
 if [[ $view != history && -z $(tr -d '[:space:]' <"$input") ]]; then
   # Nothing selected: show the history instead (if it's kept).
-  hist="${XDG_STATE_HOME:-$HOME/.local/state}/text-polish/history.jsonl"
-  if [[ -s $hist ]]; then view=history
-  else notify-send -a "Polish" "Polish" "Select some text first."; exit 0; fi
+  if [[ -s $state/history.jsonl ]]; then view=history
+  else polish_toast "Select some text first."; rm -f "$input"; exit 0; fi
 fi
-head -c 20000 "$input" >"$input.tmp" && mv "$input.tmp" "$input"
+# Too long: refuse rather than rewrite only part of it (Replace would overwrite
+# the whole selection with a rewrite of the first part).
+chars=$(LC_ALL=C.UTF-8 wc -m <"$input")
+if (( chars > MAX_CHARS )); then
+  polish_toast "That selection is too long ($chars characters; Polish handles up to $MAX_CHARS)." warn
+  rm -f "$input"; exit 0
+fi
 
-win=$(hyprctl activewindow -j 2>/dev/null)
+# The window the text came from (Replace pastes back into it). The native host
+# passes the one that was active when the browser sent the request.
+if [[ -n $window ]]; then
+  win=$(hyprctl clients -j 2>/dev/null | jq -c --arg a "$window" '.[] | select(.address==$a)' | head -1)
+else
+  win=$(hyprctl activewindow -j 2>/dev/null)
+fi
+[[ -n $win ]] || win='{}'
+# From the browser but the target isn't a browser window (you switched apps
+# while it loaded): never paste there; Copy only.
+if [[ -n $url ]] && ! jq -e '(.class // "") | test("brave|chrom|vivaldi|edge|opera"; "i")' <<<"$win" >/dev/null; then
+  editable=no win='{}'
+fi
+
 if [[ -z $style || $style == auto ]]; then
   # First apps.conf rule whose regex matches "class title url" picks the tone.
   hay="$(jq -r '"\(.class // "") \(.title // "")"' <<<"$win" 2>/dev/null) $url"
@@ -69,4 +101,8 @@ export POLISH_APP=$(jq -r '.class // empty' <<<"$win")
 export POLISH_INPUT=$input POLISH_MODE_START=$mode POLISH_STYLE=$style POLISH_EDITABLE=$editable POLISH_DIR=$DIR
 export POLISH_WINDOW=$(jq -r '.address // empty' <<<"$win")
 export POLISH_MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[]|select(.focused).name')
-exec setsid -f quickshell -p "$DIR/shell.qml" >"$run/popup.log" 2>&1 </dev/null
+umask 077   # history/settings the popup writes stay private
+# 9>&-: the popup must not inherit the launch lock. Keep holding it until the
+# popup is visible to pgrep, so a second press in between finds it.
+setsid -f quickshell -p "$DIR/shell.qml" >"$run/popup.log" 2>&1 </dev/null 9>&-
+for _ in $(seq 20); do pgrep -f "quickshell -p $DIR/shell.qml" >/dev/null 2>&1 && break; sleep 0.05; done

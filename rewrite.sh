@@ -6,6 +6,7 @@
 # is the text or error. With POLISH_STREAM=1 (the popup) every line is an event:
 #   P <json>  partial text (Claude streams)   R  restart (a retry follows)
 #   F <json>  final text                      E <json>  error message
+#   W <json>  warning about the final text (e.g. a Tweet still over 280)
 # Optional env: POLISH_LENGTH, POLISH_EMOJI, POLISH_NOTE, POLISH_SOURCE_TEXT,
 # POLISH_INTENT and POLISH_DRAFT (reply mode), POLISH_AGENT, POLISH_MODEL.
 # rewrite.sh --list-agents   -> "current<TAB>id" then "id<TAB>Label" per installed agent
@@ -26,6 +27,18 @@ fi
 
 exec </dev/null   # agents like opencode wait for EOF on an inherited open stdin
 here=$(dirname "$(readlink -f "$0")")
+# shellcheck source=lib.sh
+. "$here/lib.sh"
+umask 077
+work=$(polish_run_dir) || { printf 'E %s\n' '"No private runtime directory."'; exit 0; }
+# Every per-run file is unique (two generations of the same tone can run at once)
+# and removed on exit.
+tmpfiles=()
+cleanup() { rm -f -- "${tmpfiles[@]}"; }
+trap cleanup EXIT
+# newtmp VAR PREFIX: make a temp file, store its path in VAR, remember it for
+# cleanup (not via $(...), which would run in a subshell and lose the list).
+newtmp() { local -n _v=$1; _v=$(mktemp "$work/$2-XXXXXX") || return 1; tmpfiles+=("$_v"); }
 mode=${POLISH_MODE:-rewrite}
 stream=${POLISH_STREAM:-0}
 json() { python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'; }
@@ -37,9 +50,7 @@ fail() {  # fail MESSAGE
 style=${1:?style}; input=${2:?input file}
 # The popup sets POLISH_SOURCE_TEXT when you edited a version: rewrite that instead of the selection.
 if [[ -n ${POLISH_SOURCE_TEXT:-} ]]; then
-  mkdir -p "${XDG_RUNTIME_DIR:-/tmp}/text-polish"
-  input=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/text-polish/source-XXXXXX")
-  trap 'rm -f "$input"' EXIT
+  newtmp input source
   printf '%s' "${POLISH_SOURCE_TEXT:0:20000}" >"$input"
 fi
 
@@ -120,6 +131,9 @@ $tsamples
   *) fail "Unknown style: $style" ;;
 esac
 
+# In Reply mode, Proofread is "Standard". Set it here, before Length/Emoji and the
+# user's requests are appended to $task, so they aren't thrown away.
+[[ $mode == reply && $style == proofread ]] && task="STYLE: STANDARD. A natural, clear reply in a neutral, friendly tone that matches the conversation."
 note=${POLISH_NOTE:-}; note=${note:0:1500}
 # Adjustments from the popup's Adjust panel (all optional; read mode adds its own below).
 [[ $mode == read ]] || case "${POLISH_LENGTH:-}" in
@@ -175,7 +189,6 @@ Rules: $( [[ $style == translate ]] && echo "write in the target language above.
 fi
 
 if [[ $mode == reply ]]; then
-  [[ $style == proofread ]] && task="STYLE: STANDARD. A natural, clear reply in a neutral, friendly tone that matches the conversation."
   intent=${POLISH_INTENT:-}; intent=${intent:0:800}
   if [[ -n ${intent//[[:space:]]/} ]]; then
     want="What the user wants to say (from the user, follow it): $intent"
@@ -199,8 +212,8 @@ $text
 fi
 
 agent=$(pick_agent)
-work="${XDG_RUNTIME_DIR:-/tmp}/text-polish"; mkdir -p "$work"; cd "$work" || exit 0
-errf="$work/agent-$style.err"
+cd "$work" || exit 0
+newtmp errf agent-err
 
 run_agent() {  # $1 = system prompt, $2 = user prompt; sets out, rc
   case "$agent" in
@@ -224,16 +237,16 @@ run_agent() {  # $1 = system prompt, $2 = user prompt; sets out, rc
         --system-prompt "$1")
       if [[ $stream == 1 ]]; then
         # Stream deltas to the popup as "P" lines; the final text lands in $outf.
-        local outf="$work/stream-$style-$$.txt"
+        local outf; newtmp outf stream
         printf '%s' "$2" | "${cmd[@]}" --output-format stream-json --include-partial-messages --verbose \
           2>"$errf" | python3 -u "$here/stream_filter.py" "$outf" 2>>"$errf"
         rc=${PIPESTATUS[1]}
-        out=$(cat "$outf" 2>/dev/null); rm -f "$outf"
+        out=$(cat "$outf" 2>/dev/null)
       else
         out=$(printf '%s' "$2" | "${cmd[@]}" 2>"$errf"); rc=$?
       fi ;;
     codex)
-      local last="$work/codex-$style.txt"; rm -f "$last"
+      local last; newtmp last codex-out
       # Skip ~/.codex/config.toml (high effort + ~10 plugins) and AGENTS rules:
       # a rewrite needs neither. Small fast model at low effort: ~5s vs ~9s.
       printf '%s\n\n%s' "$1" "$2" | timeout 120 codex exec --ignore-user-config --ignore-rules \
@@ -263,9 +276,13 @@ run_agent "$system" "$prompt"
 # Tweet: enforce X's 280-character limit; feed the length back and retry.
 if [[ $style == tweet && $rc -eq 0 ]]; then
   export LC_ALL=C.UTF-8
-  for attempt in 1 2; do
+  for attempt in 1 2 3; do
     trimmed=$(printf '%s' "$out" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     (( ${#trimmed} <= 280 )) && break
+    if (( attempt == 3 )); then   # still over after two retries: say so (W line)
+      [[ $stream == 1 ]] && printf 'W %s\n' "$(printf '%s' "Still ${#trimmed} characters after two retries: over X's 280 limit. Shorten it before posting." | json)"
+      break
+    fi
     [[ $stream == 1 ]] && echo R
     run_agent "$system" "$prompt
 
