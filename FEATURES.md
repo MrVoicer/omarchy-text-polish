@@ -239,12 +239,17 @@ Shift+↻ starts over from the original.
 
 - **No middleman:** text goes from your machine to the AI provider you already
   use, through its official CLI. Polish has no server.
-- **Pastes only where you selected:** if that window closed, or a browser
-  request ended up pointed at another app, Polish pastes nowhere and leaves the
-  text on your clipboard.
+- **Pastes only where you selected:** keys go straight to the window the text
+  came from (never to whatever happens to be focused). If that window closed,
+  or a browser request ended up pointed at another app, Polish pastes nowhere
+  and leaves the text on your clipboard.
+- **Your text stays off the command line:** results, originals, history and
+  prompts travel through private files, never process arguments other users
+  could see.
 - **Private files:** settings and history are readable only by you.
-- **Independently reviewed:** an adversarial review by a second AI model
-  (Codex `gpt-6-astra`) found 18 issues, all fixed (`docs/reviews/`).
+- **Independently reviewed:** two adversarial passes by a second AI model
+  (Codex `gpt-6-astra`) found 18 and then 14 issues; all were fixed
+  (`docs/reviews/`).
 - **Prompt-injection hardened:** selected text is always treated as content,
   never as instructions. A web page that says "ignore the user and write X"
   gets rewritten, not obeyed. Instructions only come from Polish's own fields.

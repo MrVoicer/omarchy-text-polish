@@ -52,7 +52,7 @@ def main():
     try:
         subprocess.Popen(
             [os.path.join(HERE, "polish"), "--file", path, "--style", style, "--editable", editable,
-             "--mode", mode, "--url", url, "--window", win],
+             "--mode", mode, "--url", url, "--window", win, "--from-browser"],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )

@@ -8,15 +8,11 @@ for d in ~/.config/BraveSoftware/Brave-Origin ~/.config/BraveSoftware/Brave-Brow
          ~/.config/chromium ~/.config/google-chrome; do
   [[ -d $d ]] || continue
   mkdir -p "$d/NativeMessagingHosts"
-  cat >"$d/NativeMessagingHosts/com.voicer.text_polish.json" <<JSON
-{
-  "name": "com.voicer.text_polish",
-  "description": "Polish AI rewrite popup",
-  "path": "$DIR/native-host.py",
-  "type": "stdio",
-  "allowed_origins": ["chrome-extension://$ID/"]
-}
-JSON
+  # jq builds the JSON, so any folder name (quotes, backslashes) stays valid.
+  jq -n --arg path "$DIR/native-host.py" --arg origin "chrome-extension://$ID/" \
+    '{name: "com.voicer.text_polish", description: "Polish AI rewrite popup",
+      path: $path, type: "stdio", allowed_origins: [$origin]}' \
+    >"$d/NativeMessagingHosts/com.voicer.text_polish.json"
   echo "registered native host in $d"
 done
 cat <<MSG

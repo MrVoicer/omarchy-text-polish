@@ -2,7 +2,7 @@
 # polish — open the AI rewrite popup for the selected text.
 #   polish                       use the primary selection (whatever is highlighted)
 #   polish --file F [--style S] [--editable yes|no] [--mode rewrite|reply|read]
-#          [--url U] [--window ADDR]   (used by the browser extension's native host)
+#          [--url U] [--window ADDR] [--from-browser]   (used by the browser's native host)
 #   polish --undo                undo the last Replace/Insert/Paste (SUPER+ALT+Z)
 #   polish --history             open the history of past results
 # With nothing selected, polish opens the history.
@@ -14,7 +14,7 @@ DIR=$(dirname "$(readlink -f "$0")")
 [[ ${1:-} == --undo ]] && exec "$DIR/apply.sh" undo
 MAX_CHARS=20000
 
-style="" editable=unknown file="" mode=rewrite url="" view=main window=""
+style="" editable=unknown file="" mode=rewrite url="" view=main window="" from_browser=0
 while (($#)); do
   case $1 in
     --style) style=$2; shift 2 ;;
@@ -23,6 +23,7 @@ while (($#)); do
     --mode) mode=$2; shift 2 ;;
     --url) url=$2; shift 2 ;;
     --window) window=$2; shift 2 ;;
+    --from-browser) from_browser=1; shift ;;
     --history) view=history; shift ;;
     *) echo "unknown arg $1" >&2; exit 2 ;;
   esac
@@ -71,8 +72,9 @@ else
 fi
 [[ -n $win ]] || win='{}'
 # From the browser but the target isn't a browser window (you switched apps
-# while it loaded): never paste there; Copy only.
-if [[ -n $url ]] && ! jq -e '(.class // "") | test("brave|chrom|vivaldi|edge|opera"; "i")' <<<"$win" >/dev/null; then
+# while it loaded), or we couldn't tell: never paste there; Copy only. Keyed on
+# --from-browser, not the URL (non-http pages such as file:// arrive without one).
+if (( from_browser )) && ! jq -e '(.class // "") | test("brave|chrom|vivaldi|edge|opera"; "i")' <<<"$win" >/dev/null; then
   editable=no win='{}'
 fi
 

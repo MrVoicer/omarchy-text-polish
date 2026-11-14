@@ -111,6 +111,22 @@ source window and paste). Browser: `browser-extension/` →
 - **Temp files:** per run, via `mktemp` in the private runtime dir
   (`lib.sh polish_run_dir`), cleaned by a trap. Don't create them inside
   `$(...)`: that's a subshell, so it can't register them for cleanup.
+- **Text never goes on a command line.** argv is world-readable via /proc and
+  capped at ~128 KB per argument. The popup writes payloads to a private file
+  (`runWithInput`: a synchronous FileView write, then the command reads it on
+  stdin and the wrapper deletes it). Piping into a Quickshell Process and
+  closing stdin right away drops large payloads; an empty payload must skip
+  the wrapper. Claude gets its system prompt via `--system-prompt-file`,
+  OpenCode via stdin.
+- **Keys go to a window, not to "whatever is focused".** apply.sh uses
+  `hl.dsp.send_shortcut` (keycodes via xkbcli, active layout by index) for
+  paste, Right and undo; no global `wtype` for those.
+- **Every popup exit goes through `finalQuit()`**: it deletes this launch's
+  input file and waits for the ordered write queue (settings/history) to drain.
+- **Testing traps:** `timeout` kills the whole process group, including
+  wl-copy's background process, so the clipboard looks empty; test copy with a
+  normal quit. A Chromium test window's textarea can lose focus (Ctrl+A then
+  selects the page and pastes vanish): press Tab first.
 - **Get an independent review now and then.** A second model, adversarial and
   not told our conclusions, found 18 real issues (`docs/reviews/`). Verify each
   finding against the code before fixing; rerun it after big changes.

@@ -55,10 +55,71 @@ ShellRoot {
   }
   function setSetting(k, val) { var c = {}; c[k] = val; updateSettings(c) }
   function writeSettings() {
-    // One writer at a time (flock), each with its own temp file, then an atomic rename.
-    Quickshell.execDetached(["sh", "-c", 'umask 077; mkdir -p "$(dirname "$1")" && exec 7>"$1.lock" && flock 7 && t=$(mktemp "$1.XXXXXX") && printf "%s\\n" "$2" > "$t" && mv -f "$t" "$1"',
-                             "sh", settingsPath, JSON.stringify(settings, null, 2)])
+    // Each with its own temp file, then an atomic rename; queued, so in order.
+    enqueueWrite(["sh", "-c", 'umask 077; mkdir -p "$(dirname "$1")" && t=$(mktemp "$1.XXXXXX") && cat > "$t" && mv -f "$t" "$1"',
+                  "sh", settingsPath], JSON.stringify(settings, null, 2) + "\n")
   }
+
+  // ---- running commands with text on stdin ----------------------------------
+  // Text (results, originals, history, settings) never goes on a command line:
+  // argv is visible to other users and capped at ~128 KB per argument.
+  // The text goes into a private file (written synchronously; piping it into
+  // the process loses data on large payloads), which a small wrapper feeds to
+  // the command's stdin and then deletes.
+  readonly property string runDir: inputPath.replace(/\/[^\/]*$/, "")
+  property int payloadSeq: 0
+  Component {
+    id: payloadComp
+    FileView { blockWrites: true; atomicWrites: false; preload: false; printErrors: false; watchChanges: false }
+  }
+  Component {
+    id: runComp
+    Process {
+      id: rp
+      property var done: null
+      onExited: (code) => { var d = rp.done; rp.destroy(); if (d) d(code) }
+    }
+  }
+  function runWithInput(cmd, payload, done) {
+    if (payload === "") {                  // nothing to feed: run it as is
+      var q = runComp.createObject(root, { command: cmd, done: done || null })
+      q.running = true
+      return
+    }
+    var f = runDir + "/payload-" + Date.now().toString(36) + "-" + (payloadSeq++) + ".txt"
+    var fv = payloadComp.createObject(root, { path: f })
+    fv.setText(payload)
+    fv.destroy()
+    var wrapped = ["sh", "-c", 'f=$1; shift; "$@" < "$f"; rc=$?; rm -f -- "$f"; exit $rc', "sh", f].concat(cmd)
+    var p = runComp.createObject(root, { command: wrapped, done: done || null })
+    p.running = true
+  }
+  // Settings/history/agent writes run one at a time, in the order requested
+  // (a later Clear can't be overtaken by an earlier append, an older settings
+  // snapshot can't land after a newer one). Quitting waits for the queue.
+  property var writeQueue: []
+  property bool writing: false
+  property bool quitting: false
+  function enqueueWrite(cmd, payload) {
+    writeQueue = writeQueue.concat([{ cmd: cmd, payload: payload }])
+    pumpWrites()
+  }
+  function pumpWrites() {
+    if (writing) return
+    if (writeQueue.length === 0) { if (quitting) Qt.quit(); return }
+    var w = writeQueue[0]
+    writeQueue = writeQueue.slice(1)
+    writing = true
+    runWithInput(w.cmd, w.payload, function() { root.writing = false; root.pumpWrites() })
+  }
+  // The one real exit: drop this launch's input file, flush pending writes, quit.
+  function finalQuit() {
+    if (quitting) return
+    if (/\/input-[A-Za-z0-9]+\.txt$/.test(inputPath)) enqueueWrite(["rm", "-f", inputPath], "")
+    quitting = true
+    pumpWrites()
+  }
+  property string actionError: ""        // shown in the footer when Copy/Apply fails
   function settingsLoaded(fromFile) {
     var pend = Object.keys(pendingSettings).length > 0
     settings = Object.assign({}, defaultSettings, fromFile || {}, pendingSettings)
@@ -303,6 +364,7 @@ ShellRoot {
   // "main" | "adjust" | "settings" | "tone" | "history"
   readonly property string startView: Quickshell.env("POLISH_VIEW") === "history" ? "history" : "main"
   property string view: startView
+  onViewChanged: if (view !== "adjust") stopEditingPin()   // never leave a pin edit open across screens
   readonly property bool historyOnly: startView === "history" && original.trim() === ""   // opened with nothing selected
   readonly property string original: inputFile.text()
 
@@ -428,10 +490,10 @@ ShellRoot {
     agentMenu = false
     if (id === agent) return
     agent = id
-    Quickshell.execDetached(["sh", "-c", 'umask 077; mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" > "$1"', "sh", statePath, id])
+    enqueueWrite(["sh", "-c", 'umask 077; mkdir -p "$(dirname "$1")" && cat > "$1"', "sh", statePath], id + "\n")
     // New agent: add a version of the same tone and adjustments; older versions stay.
     var c = at()
-    generate(c ? c.style : style, c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent } : {})
+    generate(c ? c.style : style, c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent, lang: c.lang } : {})
   }
 
   function cycleAgent() {
@@ -532,6 +594,16 @@ ShellRoot {
     var env = { POLISH_LENGTH: v.length, POLISH_EMOJI: v.emoji, POLISH_NOTE: v.pins.concat(v.note ? [v.note] : []).join("\n"), POLISH_SOURCE_TEXT: v.source,
                 POLISH_MODE: v.mode, POLISH_INTENT: v.intent, POLISH_DRAFT: v.draft, POLISH_LANG: v.lang, POLISH_STREAM: "1" }
     if (agent) env.POLISH_AGENT = agent
+    // Edited text or a draft over the limit: refuse with a clear message (it
+    // would otherwise be cut, or exceed the size an environment value may have).
+    var longest = Math.max(v.source.length, v.draft.length)
+    if (longest > 20000) {
+      var msg = "Your " + (v.draft.length > v.source.length ? "draft reply" : "edited text") + " is too long ("
+                + longest + " characters; Polish handles up to 20000)."
+      if (v.bg) prefetched = prefetched.filter(function(x) { return x !== v })
+      else finish(indexOfVersion(v.id), false, msg)
+      return
+    }
     var ct = customByKey(s), arg = s
     if (ct) { arg = "custom"; env.POLISH_TONE_NAME = ct.label; env.POLISH_TONE_PROMPT = ct.prompt; env.POLISH_TONE_SAMPLES = ct.samples || "" }
     var j = jobComp.createObject(root, { versionId: v.id, environment: env,
@@ -873,14 +945,13 @@ ShellRoot {
     var e = { t: Date.now(), mode: v.mode, label: versionLabel(v), agent: v.agentLabel,
               app: Quickshell.env("POLISH_APP") || "", src: original.slice(0, 300), text: text }
     history = [e].concat(history).slice(0, historyMax)
-    Quickshell.execDetached(["sh", "-c",
-      // Append + trim under the same lock as Clear, so neither can undo the other.
-      'umask 077; mkdir -p "$(dirname "$1")" && exec 7>"$1.lock" && flock 7 && printf "%s\\n" "$2" >> "$1" && t=$(mktemp "$1.XXXXXX") && tail -n "$3" "$1" > "$t" && mv -f "$t" "$1"',
-      "sh", historyPath, JSON.stringify(e), String(historyMax)])
+    // Append + trim, queued behind any earlier write (and any Clear).
+    enqueueWrite(["sh", "-c", 'umask 077; mkdir -p "$(dirname "$1")" && cat >> "$1" && t=$(mktemp "$1.XXXXXX") && tail -n "$2" "$1" > "$t" && mv -f "$t" "$1"',
+                  "sh", historyPath, String(historyMax)], JSON.stringify(e) + "\n")
   }
   function clearHistory() {
     history = []
-    Quickshell.execDetached(["sh", "-c", 'exec 7>"$1.lock" && flock 7 && rm -f "$1"', "sh", historyPath])
+    enqueueWrite(["rm", "-f", historyPath], "")
   }
   function openHistory() {
     agentMenu = false; langMenu = false
@@ -889,11 +960,12 @@ ShellRoot {
     view = "history"
     blurText()
   }
-  function closeHistory() { if (historyOnly) Qt.quit(); else view = "main" }
+  function closeHistory() { if (historyOnly) finalQuit(); else view = "main" }
   function copyHistory(e) {
-    Quickshell.execDetached(["sh", "-c", 'printf %s "$1" | wl-copy', "sh", e.text])
-    historyFlash = "Copied"
-    historyFlashTimer.restart()
+    runWithInput(["wl-copy"], e.text, function(code) {
+      root.historyFlash = code === 0 ? "Copied" : "Copy failed"
+      historyFlashTimer.restart()
+    })
   }
   readonly property var historyShown: {
     var q = historyQuery.trim().toLowerCase()
@@ -910,7 +982,7 @@ ShellRoot {
   }
 
   // Every way of closing goes through here, so the result on screen is kept.
-  function quit() { recordHistory(); Qt.quit() }
+  function quit() { recordHistory(); finalQuit() }
 
   // ---- actions ------------------------------------------------------------
   // Clicking anything but a text box takes the cursor out of the text, so the
@@ -919,27 +991,41 @@ ShellRoot {
 
   function finalText() { return editor.text }
 
+  // Copy/Apply report failure in the footer and keep the popup open; the popup
+  // closes only once the text has actually been handed over.
+  property bool handingOver: false
   function copy() {
     if (busy || !current.ok) return
     recordHistory()
-    Quickshell.execDetached(["sh", "-c", 'printf %s "$1" | wl-copy', "sh", finalText()])
-    copied = true
-    copiedTimer.restart()
+    runWithInput(["wl-copy"], finalText(), function(code) {
+      if (code === 0) { root.actionError = ""; root.copied = true; copiedTimer.restart() }
+      else root.actionError = "Copy failed (wl-copy exited " + code + ")."
+    })
   }
 
   function apply(how) {
-    if (busy || !current.ok) return
+    if (busy || !current.ok || handingOver) return
     recordHistory()
+    handingOver = true
     // ORIGINAL lets Undo hand your text back where the app has no undo (terminals).
-    Quickshell.execDetached([dir + "/apply.sh", how, windowAddr, finalText(), how === "replace" ? original : "", versionLabel(current)])
-    Qt.quit()
+    var req = { how: how, addr: windowAddr, text: finalText(), original: how === "replace" ? original : "",
+                label: versionLabel(current), editable: Quickshell.env("POLISH_EDITABLE") || "unknown" }
+    runWithInput([dir + "/apply.sh", "--stdin"], JSON.stringify(req), function(code) {
+      root.handingOver = false
+      if (code === 0) root.finalQuit()
+      else root.actionError = "Couldn't hand the text over (apply.sh exited " + code + "). Try Copy."
+    })
   }
 
   function copyAndClose() {
-    if (busy || !current.ok) return
+    if (busy || !current.ok || handingOver) return
     recordHistory()
-    Quickshell.execDetached(["sh", "-c", 'printf %s "$1" | wl-copy', "sh", finalText()])
-    Qt.quit()
+    handingOver = true
+    runWithInput(["wl-copy"], finalText(), function(code) {
+      root.handingOver = false
+      if (code === 0) root.finalQuit()
+      else root.actionError = "Copy failed (wl-copy exited " + code + ")."
+    })
   }
 
   Timer { id: copiedTimer; interval: 1400; onTriggered: root.copied = false }
@@ -1265,7 +1351,7 @@ ShellRoot {
       anchors.fill: parent
       color: "#000000"
       opacity: 0.35
-      MouseArea { anchors.fill: parent; onClicked: root.view === "history" && root.historyOnly ? Qt.quit() : root.quit() }
+      MouseArea { anchors.fill: parent; onClicked: root.view === "history" && root.historyOnly ? root.finalQuit() : root.quit() }
     }
 
     Rectangle {
@@ -1592,9 +1678,9 @@ ShellRoot {
               Text {
                 // X/Twitter limit; JS length counts emoji as 2, close to X's own weighting.
                 visible: root.current && root.current.style === "tweet" && !root.showOriginal && !root.busy && root.current.ok
-                text: editor.length + " / 280"
+                text: editor.text.trim().length + " / 280"   // UTF-16 units, as rewrite.sh counts
                 textFormat: Text.PlainText
-                color: editor.length > 280 ? root.danger : root.dim
+                color: editor.text.trim().length > 280 ? root.danger : root.dim
                 font.family: root.font; font.pixelSize: 13
               }
               Text {
@@ -1793,6 +1879,7 @@ ShellRoot {
             horizontalAlignment: Text.AlignHCenter
             text: {
               var v = root.current
+              if (root.actionError) return "\u26A0 " + root.actionError
               if (v && !v.busy && v.warning) return "\u26A0 " + v.warning
               var head = !v ? "Starting\u2026"
                        : v.busy ? "Generating with " + v.agentLabel
@@ -1801,7 +1888,7 @@ ShellRoot {
             }
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            color: root.current && !root.current.busy && root.current.warning ? root.danger : root.dim
+            color: root.actionError || (root.current && !root.current.busy && root.current.warning) ? root.danger : root.dim
             font.family: root.font
             font.pixelSize: 11
           }

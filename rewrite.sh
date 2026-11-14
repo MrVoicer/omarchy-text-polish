@@ -51,7 +51,10 @@ style=${1:?style}; input=${2:?input file}
 # The popup sets POLISH_SOURCE_TEXT when you edited a version: rewrite that instead of the selection.
 if [[ -n ${POLISH_SOURCE_TEXT:-} ]]; then
   newtmp input source
-  printf '%s' "${POLISH_SOURCE_TEXT:0:20000}" >"$input"
+  # Refuse over-long text rather than silently rewrite only its start.
+  n=$(printf '%s' "$POLISH_SOURCE_TEXT" | LC_ALL=C.UTF-8 wc -m)
+  (( n <= 20000 )) || fail "Your edited text is too long ($n characters; Polish handles up to 20000)."
+  printf '%s' "$POLISH_SOURCE_TEXT" >"$input"
 fi
 
 len=$(LC_ALL=C.UTF-8 wc -m <"$input"); half=$(( len / 2 )); punchy_len=$(( len * 65 / 100 ))
@@ -195,7 +198,8 @@ if [[ $mode == reply ]]; then
   else
     want="The user did not say what to reply. Write a sensible, friendly reply that responds to each question or request in the message without committing the user to anything specific (no yes/no decisions, dates or promises)."
   fi
-  draft=${POLISH_DRAFT:-}; draft=${draft:0:20000}
+  draft=${POLISH_DRAFT:-}
+  (( ${#draft} <= 20000 )) || fail "Your draft reply is too long (${#draft} characters; Polish handles up to 20000)."
   [[ -n ${draft//[[:space:]]/} ]] && want+="
 The user already wrote this draft reply. Keep its content and decisions and restyle it:
 <draft>
@@ -218,6 +222,9 @@ newtmp errf agent-err
 run_agent() {  # $1 = system prompt, $2 = user prompt; sets out, rc
   case "$agent" in
     claude)
+      # The system prompt carries your pins, drafts and samples: pass it in a
+      # private file, never on the command line (argv is visible to other users).
+      local sysf; newtmp sysf sysprompt; printf '%s' "$1" >"$sysf"
       # Read mode thinks first (numbers, conversions); thinking isn't streamed as
       # text, so only the final answer reaches the popup. Measured on a 1.5k-char
       # article with a units pin: Summarize/Points high = 9.6s/18.4s, medium =
@@ -234,7 +241,7 @@ run_agent() {  # $1 = system prompt, $2 = user prompt; sets out, rc
       [[ -n $level ]] && effort=(--effort "$level")
       local cmd=(timeout 90 claude -p --model "${POLISH_MODEL:-sonnet}" "${effort[@]}" \
         --tools "" --strict-mcp-config --setting-sources "" --no-session-persistence \
-        --system-prompt "$1")
+        --system-prompt-file "$sysf")
       if [[ $stream == 1 ]]; then
         # Stream deltas to the popup as "P" lines; the final text lands in $outf.
         local outf; newtmp outf stream
@@ -256,9 +263,8 @@ run_agent() {  # $1 = system prompt, $2 = user prompt; sets out, rc
       out=$(cat "$last" 2>/dev/null) ;;
     opencode)
       # read-only "plan" agent; uses opencode's own default model
-      out=$(timeout 120 opencode run --agent plan "$1
-
-$2" 2>"$errf"); rc=$? ;;
+      # Prompt on stdin (opencode reads it when no message argument is given).
+      out=$(printf '%s\n\n%s' "$1" "$2" | timeout 120 opencode run --agent plan 2>"$errf"); rc=$? ;;
     commandcode)
       out=$(printf '%s\n\n%s' "$1" "$2" | timeout 120 cmd -p --no-session --max-turns 1 \
         --permission-mode plan 2>"$errf"); rc=$? ;;
@@ -278,15 +284,18 @@ if [[ $style == tweet && $rc -eq 0 ]]; then
   export LC_ALL=C.UTF-8
   for attempt in 1 2 3; do
     trimmed=$(printf '%s' "$out" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-    (( ${#trimmed} <= 280 )) && break
+    out=$trimmed      # return exactly what was measured
+    # Count UTF-16 units like the popup's n / 280 counter (an emoji counts 2, as on X).
+    tlen=$(printf '%s' "$trimmed" | python3 -c 'import sys; print(len(sys.stdin.read().encode("utf-16-le")) // 2)')
+    (( tlen <= 280 )) && break
     if (( attempt == 3 )); then   # still over after two retries: say so (W line)
-      [[ $stream == 1 ]] && printf 'W %s\n' "$(printf '%s' "Still ${#trimmed} characters after two retries: over X's 280 limit. Shorten it before posting." | json)"
+      [[ $stream == 1 ]] && printf 'W %s\n' "$(printf '%s' "Still $tlen characters after two retries: over X's 280 limit. Shorten it before posting." | json)"
       break
     fi
     [[ $stream == 1 ]] && echo R
     run_agent "$system" "$prompt
 
-Your previous version was ${#trimmed} characters, which is over the 280 limit:
+Your previous version was $tlen characters, which is over the 280 limit:
 $trimmed
 
 Shorten it to at most 260 characters. Output only the post."
@@ -300,6 +309,10 @@ if [[ $rc -ne 0 || -z ${out//[[:space:]]/} ]]; then
   fail "$agent failed (exit $rc). ${msg:-No output.}"
 fi
 # Strip a stray wrapper if the model echoed the tags.
-for tag in text message reply draft samples; do out=${out#<$tag>}; out=${out%</$tag>}; done
+# Strip a stray wrapper the model echoed, but only a whole-output wrapper that
+# the selected text didn't itself have (e.g. a real SVG <text>…</text>).
+for tag in text message reply draft samples; do
+  if [[ $out == "<$tag>"*"</$tag>" && $text != "<$tag>"* ]]; then out=${out#<$tag>}; out=${out%</$tag>}; fi
+done
 if [[ $stream == 1 ]]; then printf 'F %s\n' "$(printf '%s' "$out" | json)"
 else printf 'OK %s\n%s' "$style" "$out"; fi
