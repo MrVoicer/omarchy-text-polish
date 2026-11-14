@@ -34,6 +34,8 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
   `browser-extension/` loaded once (brave://extensions → Developer mode →
   Load unpacked). Fixed extension ID: see `extension-id.txt` (pinned by the
   `key` in its manifest so the native-messaging allow-list keeps matching).
+- **Reply straight away**: **Shift + Right Alt** or **SUPER + ALT + Y** opens
+  directly in Reply mode.
 - **Any app**: highlight text, press **SUPER + ALT + R** or tap **Right Alt** (reads the Wayland
   primary selection). Bound in `~/.config/hypr/bindings.lua`.
   A system-wide right-click entry is not possible on Wayland: every app draws
