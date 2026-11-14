@@ -25,7 +25,11 @@ def main():
         return reply({"ok": False, "error": "message too large"})
     msg = json.loads(sys.stdin.buffer.read(size))
     text = str(msg.get("text", ""))[:20000]
-    style = msg.get("style") if msg.get("style") in STYLES else "proofread"
+    style = msg.get("style") if msg.get("style") in STYLES else "auto"   # auto: apps.conf decides
+    mode = "reply" if msg.get("mode") == "reply" else "rewrite"
+    url = str(msg.get("url", ""))[:2000]
+    if not url.startswith(("http://", "https://")):
+        url = ""
     editable = "yes" if msg.get("editable") else "no"
     run = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "text-polish")
     os.makedirs(run, mode=0o700, exist_ok=True)
@@ -33,7 +37,8 @@ def main():
     with os.fdopen(fd, "w") as f:
         f.write(text)
     subprocess.Popen(
-        [os.path.join(HERE, "polish"), "--file", path, "--style", style, "--editable", editable],
+        [os.path.join(HERE, "polish"), "--file", path, "--style", style, "--editable", editable,
+         "--mode", mode, "--url", url],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         start_new_session=True,
     )

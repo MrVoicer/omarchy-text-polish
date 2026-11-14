@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# apply.sh replace|insert WINDOW_ADDRESS TEXT
+# apply.sh replace|insert|paste WINDOW_ADDRESS TEXT
+# paste: paste at the cursor (Reply mode), without touching any selection.
 # Puts TEXT on the clipboard, refocuses the window the selection came from and
 # pastes over the selection (replace) or right after it (insert).
 mode=$1 addr=$2 text=$3

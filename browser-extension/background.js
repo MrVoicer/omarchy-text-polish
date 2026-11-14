@@ -18,6 +18,8 @@ chrome.runtime.onInstalled.addListener(() => {
     for (const [key, label] of STYLES) {
       chrome.contextMenus.create({ id: `polish:${key}`, parentId: "polish", title: label, contexts: ["selection"] });
     }
+    // Draft a reply to the selected message; the tone comes from the site (apps.conf).
+    chrome.contextMenus.create({ id: "reply:auto", title: "Reply with AI", contexts: ["selection"] });
   });
 });
 
@@ -33,15 +35,19 @@ function readSelection() {
 }
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (!String(info.menuItemId).startsWith("polish:")) return;
-  const style = String(info.menuItemId).slice("polish:".length);
+  const id = String(info.menuItemId);
+  let style, mode;
+  if (id.startsWith("polish:")) { style = id.slice("polish:".length); mode = "rewrite"; }
+  else if (id === "reply:auto") { style = "auto"; mode = "reply"; }
+  else return;
   let text = info.selectionText || "";
   try {
     const target = { tabId: tab.id, frameIds: [info.frameId ?? 0] };
     const [res] = await chrome.scripting.executeScript({ target, func: readSelection });
     if (res && res.result && res.result.trim()) text = res.result;
   } catch (_) { /* restricted page: fall back to selectionText */ }
-  chrome.runtime.sendNativeMessage(HOST, { text, style, editable: !!info.editable }, (reply) => {
+  const url = info.pageUrl || (tab && tab.url) || "";
+  chrome.runtime.sendNativeMessage(HOST, { text, style, mode, url, editable: !!info.editable }, (reply) => {
     if (chrome.runtime.lastError) console.error("Polish:", chrome.runtime.lastError.message);
   });
 });

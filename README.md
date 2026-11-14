@@ -50,6 +50,29 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
 - `native-host.py` — bridge from the extension; `install.sh` registers it
   (`NativeMessagingHosts/com.voicer.text_polish.json` for Brave/Chromium/Chrome).
 
+## Reply mode
+Switch **Rewrite | Reply** in the header (Alt+M), or right-click a message in
+Brave and choose **Reply with AI**. Reply drafts the answer to the selected
+message instead of restyling it. Type what you want to say in the box at the top
+("yes, but Monday works better") and press Enter. With no intent it writes a
+neutral reply that commits to nothing. It never invents times, prices or
+promises: missing details become `[placeholders]`. Every tone applies
+(Proofread shows as **Standard**). If you edit a reply and regenerate, your
+edit is used as the draft. Buttons: **Paste** at your cursor in the source
+window, or **Copy** (copies and closes) to paste into the chat yourself.
+
+## Tone by app (`apps.conf`)
+Without an explicit tone, Polish starts in the tone of the first rule whose
+regex matches the window class, title and (from Brave) the page URL. The
+shipped rules: X → Tweet, WhatsApp/Telegram/Signal/Discord/Slack → Casual,
+Gmail/Outlook/LinkedIn → Formal, anything else → Proofread. Edit
+`apps.conf` to add your own. A tone picked in Brave's menu always wins.
+
+## Streaming
+With Claude, text appears as it is written (`stream-json` deltas through
+`stream_filter.py`). The first words show in about 2s instead of waiting for
+the whole result. Other agents return all at once.
+
 ## Versions and Adjust
 - Every rewrite is saved as a numbered version. Page through them with the
   `‹ n / N ›` pager or the **Left/Right** arrow keys. While the cursor is in the
@@ -74,7 +97,7 @@ keyboard shortcuts.
 
 ## Keys in the popup
 Esc close · Ctrl+Enter replace (copy if the selection wasn't editable) ·
-Ctrl+Shift+Enter insert · Ctrl+R regenerate · ←/→ versions · Alt+1–8 pick style · Alt+J adjust · Alt+A next agent ·
+Ctrl+Shift+Enter insert · Ctrl+R regenerate · ←/→ versions · Alt+1–8 pick style · Alt+J adjust · Alt+M rewrite/reply · Alt+A next agent ·
 Alt+O (or the Show original button) swaps the box to the full original text and back.
 **Tweet** keeps the result within X's 280-character limit (it retries up to
 twice if the agent overshoots) and shows a live `n / 280` counter while you edit. The result

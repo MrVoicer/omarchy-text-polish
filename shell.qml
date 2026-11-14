@@ -30,7 +30,11 @@ ShellRoot {
     { key: "formal", label: "Formal" },
     { key: "witty", label: "Witty" }
   ]
+  // "rewrite": restyle the selection. "reply": draft a reply to the selected message.
+  property string mode: Quickshell.env("POLISH_MODE_START") === "reply" ? "reply" : "rewrite"
+  property string intent: ""                // Reply mode: what you want to say
   function styleLabel(k) {
+    if (k === "proofread" && mode === "reply") return "Standard"
     for (var i = 0; i < styles.length; i++) if (styles[i].key === k) return styles[i].label
     return k
   }
@@ -103,8 +107,8 @@ ShellRoot {
     agent = id
     Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" > "$1"', "sh", statePath, id])
     // New agent: add a version of the same tone and adjustments; older versions stay.
-    var c = current
-    generate(c ? c.style : style, c ? { length: c.length, emoji: c.emoji, note: c.note } : {})
+    var c = at()
+    generate(c ? c.style : style, c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent } : {})
   }
 
   function cycleAgent() {
@@ -146,9 +150,9 @@ ShellRoot {
     Process {
       id: job
       property int versionId
-      stdout: StdioCollector {
-        onStreamFinished: { root.jobDone(job.versionId, text); job.destroy() }
-      }
+      // rewrite.sh line protocol (POLISH_STREAM=1): P/R/F/E, see its header.
+      stdout: SplitParser { onRead: (line) => root.jobLine(job.versionId, line) }
+      onExited: { root.jobExited(job.versionId); job.destroy() }
     }
   }
 
@@ -156,11 +160,18 @@ ShellRoot {
   // What the next generation rewrites: your edited text if you changed the
   // version on screen, otherwise whatever that version was rewritten from.
   function baseSource(fromOriginal) {
-    if (fromOriginal) return ""
+    if (fromOriginal || mode === "reply") return ""     // a reply always answers the original message
     var c = at()
-    if (!c) return ""
+    if (!c || c.mode !== "rewrite") return ""
     if (c.ok && c.edited && c.text.trim() !== "") return c.text
     return c.source || ""
+  }
+
+  // Reply mode: an edited reply on screen is sent along as your draft to restyle.
+  function replyDraft(fromOriginal) {
+    if (mode !== "reply" || fromOriginal) return ""
+    var c = at()
+    return c && c.mode === "reply" && c.ok && c.edited ? c.text : ""
   }
 
   function generate(s, opts) {
@@ -168,6 +179,8 @@ ShellRoot {
       id: nextId++, style: s, agent: agent, agentLabel: agentLabel,
       length: opts.length || "", emoji: opts.emoji || "", note: (opts.note || "").trim(),
       source: baseSource(opts.fromOriginal), edited: false,
+      mode: mode, intent: mode === "reply" ? (opts.intent !== undefined ? opts.intent : intent).trim() : "",
+      draft: replyDraft(opts.fromOriginal), partial: "",
       busy: true, ok: false, text: "", ms: 0, startedAt: Date.now()
     }
     versions = versions.concat([v])
@@ -176,31 +189,54 @@ ShellRoot {
     copied = false
     now = Date.now()
     vi = versions.length - 1
-    var env = { POLISH_LENGTH: v.length, POLISH_EMOJI: v.emoji, POLISH_NOTE: v.note, POLISH_SOURCE_TEXT: v.source }
+    var env = { POLISH_LENGTH: v.length, POLISH_EMOJI: v.emoji, POLISH_NOTE: v.note, POLISH_SOURCE_TEXT: v.source,
+                POLISH_MODE: v.mode, POLISH_INTENT: v.intent, POLISH_DRAFT: v.draft, POLISH_STREAM: "1" }
     if (agent) env.POLISH_AGENT = agent
     var j = jobComp.createObject(root, { versionId: v.id, environment: env,
       command: [dir + "/rewrite.sh", s, inputPath] })
     j.running = true
   }
 
-  function jobDone(id, out) {
-    var nl = out.indexOf("\n")
-    var head = nl < 0 ? out : out.slice(0, nl)
-    var body = nl < 0 ? "" : out.slice(nl + 1)
-    var list = versions.slice()
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id !== id) continue
-      var v = Object.assign({}, list[i])
-      v.busy = false
-      v.ms = Date.now() - v.startedAt
-      v.ok = head.indexOf("OK ") === 0
-      v.text = v.ok ? body : (body.trim() || "Rewrite failed.")
-      list[i] = v
-      versions = list
-      if (i === vi) showVersion()
-      return
+  function indexOfVersion(id) {
+    for (var i = 0; i < versions.length; i++) if (versions[i].id === id) return i
+    return -1
+  }
+
+  function jobLine(id, line) {
+    var i = indexOfVersion(id)
+    if (i < 0 || !versions[i].busy) return
+    var kind = line.charAt(0), payload = line.length > 2 ? line.slice(2) : ""
+    var value = ""
+    if (payload) { try { value = JSON.parse(payload) } catch (e) { return } }
+    if (kind === "P" || kind === "R") {
+      // Streaming text: mutate in place (no list copy per chunk) and paint it.
+      var v = versions[i]
+      v.partial = kind === "R" ? "" : v.partial + value
+      if (i === vi) { loadingEditor = true; editor.text = v.partial; loadingEditor = false }
+      if (!streaming) streaming = true
+    } else if (kind === "F" || kind === "E") {
+      finish(i, kind === "F", kind === "F" ? value : (value || "Rewrite failed."))
     }
   }
+
+  function jobExited(id) {
+    var i = indexOfVersion(id)
+    if (i >= 0 && versions[i].busy) finish(i, false, "The agent exited without an answer.")
+  }
+
+  function finish(i, ok, text) {
+    var list = versions.slice()
+    var v = Object.assign({}, list[i])
+    v.busy = false
+    v.ms = Date.now() - v.startedAt
+    v.ok = ok
+    v.text = ok ? text : String(text).trim()
+    v.partial = ""
+    list[i] = v
+    versions = list
+    if (i === vi) showVersion()
+  }
+  property bool streaming: false    // bumps bindings that depend on partial text
 
   // Load the on-screen version into the editor (its text may have been edited).
   property bool loadingEditor: false
@@ -209,11 +245,16 @@ ShellRoot {
   function showVersion() {
     var v = at()
     loadingEditor = true
-    editor.text = v && !v.busy ? v.text : ""
+    editor.text = !v ? "" : v.busy ? (v.partial || "") : v.text
     loadingEditor = false
     copied = false
   }
-  onViChanged: { var v = at(); if (v) style = v.style; showVersion(); if (view === "main") blurText() }
+  onViChanged: {
+    var v = at()
+    if (v) { style = v.style; mode = v.mode; if (v.mode === "reply") intent = v.intent }
+    showVersion()
+    if (view === "main") blurText()
+  }
 
   function go(delta) {
     var n = vi + delta
@@ -226,9 +267,22 @@ ShellRoot {
   function pick(s) {
     showOriginal = false
     for (var i = versions.length - 1; i >= 0; i--) {
-      if (versions[i].style === s) { vi = i; style = s; return }
+      if (versions[i].style === s && versions[i].mode === mode) { vi = i; style = s; return }
     }
     generate(s, {})
+  }
+
+  function setMode(m) {
+    if (m === mode) return
+    mode = m
+    agentMenu = false
+    pick(style)          // that tone's latest version in this mode, or a new one
+  }
+
+  function draftReply() {
+    blurText()
+    var c = at()
+    generate(style, c ? { length: c.length, emoji: c.emoji, note: c.note, intent: intent } : { intent: intent })
   }
 
   function toneByIndex(i) {
@@ -240,7 +294,7 @@ ShellRoot {
   // fromOriginal (Shift+click or Ctrl+Shift+R): rewrite the original selection, ignoring edits.
   function regenerate(fromOriginal) {
     var c = at()
-    var o = c ? { length: c.length, emoji: c.emoji, note: c.note } : {}
+    var o = c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent } : {}
     o.fromOriginal = !!fromOriginal
     generate(c ? c.style : style, o)
   }
@@ -276,7 +330,9 @@ ShellRoot {
 
   function versionTags(v) {
     if (!v) return ""
-    var t = [styleLabel(v.style)]
+    var t = [v.mode === "reply" ? "Reply, " + (v.style === "proofread" ? "Standard" : styleLabel(v.style)) : styleLabel(v.style)]
+    if (v.intent) t.push("\u201C" + (v.intent.length > 24 ? v.intent.slice(0, 23) + "\u2026" : v.intent) + "\u201D")
+    if (v.draft) t.push("from your draft")
     if (v.source) t.push("from your edit")
     if (v.edited) t.push("edited")
     if (v.length) t.push(v.length === "short" ? "short" : "long")
@@ -299,9 +355,15 @@ ShellRoot {
     copiedTimer.restart()
   }
 
-  function apply(mode) {
+  function apply(how) {
     if (busy || !current.ok) return
-    Quickshell.execDetached([dir + "/apply.sh", mode, windowAddr, finalText()])
+    Quickshell.execDetached([dir + "/apply.sh", how, windowAddr, finalText()])
+    Qt.quit()
+  }
+
+  function copyAndClose() {
+    if (busy || !current.ok) return
+    Quickshell.execDetached(["sh", "-c", 'printf %s "$1" | wl-copy', "sh", finalText()])
     Qt.quit()
   }
 
@@ -458,7 +520,7 @@ ShellRoot {
           model: root.styles
           Chip {
             required property var modelData
-            label: modelData.label
+            label: root.styleLabel(modelData.key)
             active: ts.activeKey === modelData.key
             onClicked: ts.chosen(modelData.key)
           }
@@ -550,10 +612,11 @@ ShellRoot {
       Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
       Item { id: focusSink; focus: true }
-      readonly property bool typing: editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus
+      readonly property bool typing: editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus
       Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.view = "main" : Qt.quit() }
-      Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; onActivated: root.view === "adjust" ? root.generateAdjusted() : (root.editable ? root.apply("replace") : root.copy()) }
-      Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.editable && root.view === "main"; onActivated: root.apply("insert") }
+      Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; onActivated: root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.editable ? root.apply("replace") : root.copy()) }
+      Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.view === "main" && (root.editable || root.mode === "reply"); onActivated: root.apply(root.mode === "reply" ? "paste" : "insert") }
+      Shortcut { sequence: "Alt+M"; enabled: root.view === "main"; onActivated: root.setMode(root.mode === "reply" ? "rewrite" : "reply") }
       Shortcut { sequence: "Ctrl+R"; enabled: root.view === "main"; onActivated: root.regenerate(false) }
       Shortcut { sequence: "Ctrl+Shift+R"; enabled: root.view === "main"; onActivated: root.regenerate(true) }
       // Left/Right page through versions unless a text box has the cursor; Alt+Left/Right always do.
@@ -589,7 +652,8 @@ ShellRoot {
           Rectangle {
             id: agentPill
             anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-            width: Math.min(pillRow.implicitWidth + 24, header.width / 2 - 70)
+            width: Math.min(pillRow.implicitWidth + 24, (header.width - seg.width) / 2 - 10)
+            clip: true
             height: 34
             radius: 17
             color: pillMouse.containsMouse || root.agentMenu ? root.surface2 : root.surface
@@ -605,16 +669,76 @@ ShellRoot {
             MouseArea { id: pillMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.agentMenu = !root.agentMenu } }
           }
 
-          Text {
+          // Rewrite | Reply switch (Alt+M)
+          Rectangle {
+            id: seg
             anchors.centerIn: parent
-            text: "Polish"
-            textFormat: Text.PlainText
-            color: root.fg
-            font.family: root.font
-            font.pixelSize: 20
-            font.weight: Font.DemiBold
+            width: segRow.implicitWidth + 8
+            height: 38
+            radius: 19
+            color: root.surface
+            Row {
+              id: segRow
+              anchors.centerIn: parent
+              spacing: 4
+              Repeater {
+                model: [{ key: "rewrite", label: "Rewrite" }, { key: "reply", label: "Reply" }]
+                Rectangle {
+                  required property var modelData
+                  width: segText.implicitWidth + 28
+                  height: 30
+                  radius: 15
+                  color: root.mode === modelData.key ? root.fg : (segMouse.containsMouse ? root.surface2 : "transparent")
+                  Text {
+                    id: segText
+                    anchors.centerIn: parent
+                    text: modelData.label
+                    textFormat: Text.PlainText
+                    color: root.mode === modelData.key ? root.bg : root.fg
+                    font.family: root.font; font.pixelSize: 14
+                    font.weight: root.mode === modelData.key ? Font.DemiBold : Font.Normal
+                  }
+                  MouseArea { id: segMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.setMode(modelData.key) } }
+                }
+              }
+            }
           }
           IconButton { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0156}"; onClicked: Qt.quit() }
+        }
+
+        // Reply mode: what you want to say (Enter drafts the reply)
+        Rectangle {
+          visible: root.mode === "reply"
+          Layout.fillWidth: true
+          implicitHeight: 44
+          radius: 22
+          color: root.surface
+          border.width: intentField.activeFocus ? 1 : 0
+          border.color: root.accent
+          RowLayout {
+            anchors { fill: parent; leftMargin: 16; rightMargin: 6 }
+            spacing: 8
+            TextField {
+              id: intentField
+              Layout.fillWidth: true
+              text: root.intent
+              onTextEdited: root.intent = text
+              placeholderText: "What do you want to say? e.g. yes, but Monday works better"
+              placeholderTextColor: root.faint
+              color: root.fg
+              selectionColor: root.surface2
+              font.family: root.font
+              font.pixelSize: 14
+              background: null
+              onAccepted: root.draftReply()
+            }
+            Rectangle {
+              implicitWidth: 34; implicitHeight: 34; radius: 17
+              color: draftMouse.containsMouse ? root.surface2 : "transparent"
+              Text { anchors.centerIn: parent; text: "\u{F048A}"; textFormat: Text.PlainText; color: root.accent; font.family: root.font; font.pixelSize: 16 }
+              MouseArea { id: draftMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.draftReply() }
+            }
+          }
         }
 
         // Result box
@@ -663,9 +787,9 @@ ShellRoot {
                 }
               }
               Text {
-                visible: root.busy && !root.showOriginal
+                visible: root.busy && !root.showOriginal && editor.length === 0
                 anchors { left: parent.left; top: parent.top; margins: 4 }
-                text: "Rewriting with " + (root.current ? root.current.agentLabel : root.agentLabel) + "…  "
+                text: (root.mode === "reply" ? "Drafting reply with " : "Rewriting with ") + (root.current ? root.current.agentLabel : root.agentLabel) + "…  "
                       + root.fmtSecs(Math.max(0, root.now - (root.current ? root.current.startedAt : root.now)))
                 textFormat: Text.PlainText
                 color: root.dim
@@ -787,16 +911,18 @@ ShellRoot {
         RowLayout {
           Layout.fillWidth: true
           spacing: 12
+          // Rewrite: Insert / Replace (Close / Copy for read-only text).
+          // Reply: Paste at your cursor / Copy and close, to paste into the chat yourself.
           ActionButton {
-            label: root.editable ? "Insert" : "Close"
-            enabled: !root.editable || (!root.busy && root.current.ok)
-            onClicked: root.editable ? root.apply("insert") : Qt.quit()
+            label: root.mode === "reply" ? "Paste" : (root.editable ? "Insert" : "Close")
+            enabled: root.mode === "reply" || root.editable ? (!root.busy && root.current.ok) : true
+            onClicked: root.mode === "reply" ? root.apply("paste") : (root.editable ? root.apply("insert") : Qt.quit())
           }
           ActionButton {
-            label: root.editable ? "Replace" : "Copy"
+            label: root.mode === "reply" ? "Copy" : (root.editable ? "Replace" : "Copy")
             primary: true
             enabled: !root.busy && root.current.ok
-            onClicked: root.editable ? root.apply("replace") : root.copy()
+            onClicked: root.mode === "reply" ? root.copyAndClose() : (root.editable ? root.apply("replace") : root.copy())
           }
         }
 
@@ -832,7 +958,7 @@ ShellRoot {
               contentItem: Text {
                 text: "Esc close \u00b7 Ctrl+Enter " + (root.editable ? "replace" : "copy") + " \u00b7 Ctrl+Shift+Enter insert\n"
                     + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate (Shift+\u21BB or Ctrl+Shift+R: from original) \u00b7 Alt+1\u20138 tone\n"
-                    + "Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original"
+                    + "Alt+M rewrite/reply \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original"
                 textFormat: Text.PlainText
                 color: root.fg
                 font.family: root.font

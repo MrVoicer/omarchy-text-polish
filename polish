@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # polish — open the AI rewrite popup for the selected text.
 #   polish                       use the primary selection (whatever is highlighted)
-#   polish --file F [--style S] [--editable yes|no]   (used by the browser extension)
+#   polish --file F [--style S] [--editable yes|no] [--mode rewrite|reply] [--url U]
+#                                (used by the browser extension)
+# Without --style, the starting tone comes from apps.conf (window class/title/url).
 set -uo pipefail
 DIR=$(dirname "$(readlink -f "$0")")
-style=proofread editable=unknown file=""
+style="" editable=unknown file="" mode=rewrite url=""
 while (($#)); do
   case $1 in
     --style) style=$2; shift 2 ;;
     --file) file=$2; shift 2 ;;
     --editable) editable=$2; shift 2 ;;
+    --mode) mode=$2; shift 2 ;;
+    --url) url=$2; shift 2 ;;
     *) echo "unknown arg $1" >&2; exit 2 ;;
   esac
 done
@@ -27,8 +31,22 @@ if [[ -z $(tr -d '[:space:]' <"$input") ]]; then
 fi
 head -c 20000 "$input" >"$input.tmp" && mv "$input.tmp" "$input"
 
-export POLISH_INPUT=$input POLISH_STYLE=$style POLISH_EDITABLE=$editable POLISH_DIR=$DIR
-export POLISH_WINDOW=$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty')
+win=$(hyprctl activewindow -j 2>/dev/null)
+if [[ -z $style || $style == auto ]]; then
+  # First apps.conf rule whose regex matches "class title url" picks the tone.
+  hay="$(jq -r '"\(.class // "") \(.title // "")"' <<<"$win" 2>/dev/null) $url"
+  style=proofread
+  while IFS= read -r line; do
+    line=${line%%#*}; [[ $line == *=* ]] || continue
+    re=$(sed 's/[[:space:]]*$//' <<<"${line%=*}"); tone=$(tr -d '[:space:]' <<<"${line##*=}")
+    [[ -n $re && -n $tone ]] || continue
+    if grep -qiE -- "$re" <<<"$hay" 2>/dev/null; then style=$tone; break; fi
+  done <"$DIR/apps.conf"
+fi
+[[ $mode == reply ]] || mode=rewrite
+
+export POLISH_INPUT=$input POLISH_MODE_START=$mode POLISH_STYLE=$style POLISH_EDITABLE=$editable POLISH_DIR=$DIR
+export POLISH_WINDOW=$(jq -r '.address // empty' <<<"$win")
 export POLISH_MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[]|select(.focused).name')
 pkill -f "quickshell -p $DIR/shell.qml" 2>/dev/null
 exec setsid -f quickshell -p "$DIR/shell.qml" >"$run/popup.log" 2>&1 </dev/null
