@@ -40,6 +40,9 @@ learn something the next person would otherwise rediscover the hard way.
 - **Keep `FEATURES.md` current.** It's the source for the landing page and
   marketing. When a feature ships or changes, update it in the same commit,
   and only claim what the build actually does (numbers say where they came from).
+  Prompts are instructions, not guarantees: write "told never to invent", not
+  "never invents". Style never beats meaning (a tone may not drop a fact or a
+  qualifier like "only if" to hit its length).
 
 ## Architecture in one breath
 
@@ -117,7 +120,8 @@ source window and paste). Browser: `browser-extension/` →
   stdin and the wrapper deletes it). Piping into a Quickshell Process and
   closing stdin right away drops large payloads; an empty payload must skip
   the wrapper. Claude gets its system prompt via `--system-prompt-file`,
-  OpenCode via stdin.
+  OpenCode via stdin. `jq --arg x "$text"` counts too: build JSON from the
+  file (`jq '{...}' "$file"`) instead.
 - **Keys go to a window, not to "whatever is focused".** apply.sh uses
   `hl.dsp.send_shortcut` (keycodes via xkbcli, active layout by index) for
   paste, Right and undo; no global `wtype` for those.

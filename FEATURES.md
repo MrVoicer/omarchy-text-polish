@@ -57,8 +57,8 @@ measured it; see *Proof points*):
 | **Tweet** | One post that fits X's 280-character limit, hook first. Retries automatically (twice) if the model overshoots, and warns if it's still over; live `n / 280` counter. |
 | **Casual** | A friendly message to a teammate: contractions, plain words, warm. |
 | **Punchy** | Headline first, short sentences, strong verbs, no hedging. |
-| **Concise** | At most half the length, every fact, question and request kept. |
-| **Detailed** | 1.5–2× longer with context and transitions, without inventing facts. |
+| **Concise** | Aims for half the length while keeping every fact, question and request; if the two conflict, the facts win. |
+| **Detailed** | 1.5–2× longer with context and transitions; told never to add new facts. |
 | **Formal** | Client-ready: no contractions, no slang, courteous phrasing. |
 | **Witty** | Playful, a joke or two, still accurate and kind. |
 
@@ -70,8 +70,9 @@ Select a message (WhatsApp Web, Gmail, Slack, anything) and Polish drafts *your*
 reply instead of rewriting theirs.
 - Say what you want in one line ("yes, but Monday works better") and press Enter.
 - With nothing typed, it writes a sensible reply that commits you to nothing.
-- It **never invents** times, prices or promises; it leaves `[time]`-style
-  placeholders for you to fill in.
+- It's instructed **not to invent** times, prices or promises and to leave
+  `[time]`-style placeholders for you to fill in instead. Check the draft before
+  sending: it's an AI, and the rule is a strong instruction, not a guarantee.
 - Every tone works for replies. Edit a draft and restyle it, and your edit is
   kept.
 - **Paste** drops the reply at your cursor; **Copy** copies it and closes.
@@ -159,7 +160,8 @@ even with Do Not Disturb on), or press
 your clipboard.
 
 ### History
-Every result you used, searchable, one click to copy, even after the popup is
+Every result you got (including ones on screen when you closed the popup, so a
+slip of Esc loses nothing), searchable, one click to copy, even after the popup is
 gone. Tap Right Alt with nothing selected (or Alt+H) to open it. The last 100
 results, stored only on your computer; turn it off or clear it in Settings.
 
@@ -188,8 +190,10 @@ Shift+↻ starts over from the original.
   remembered.
 - Uses the CLI you're already logged into: **no API keys, no new account, no
   extra subscription**.
-- Agents run in read-only / no-tool modes, so a rewrite can't touch your files
-  or projects. Claude and Codex also run with no saved session and without your
+- Each agent runs in its most restricted mode: Claude with no tools and no MCP
+  servers, Codex in its read-only sandbox, OpenCode's read-only `plan` agent,
+  Command Code in plan mode. That's what the CLIs offer; Polish asks for text
+  back, never for actions. Claude and Codex also run with no saved session and without your
   personal agent config.
 
 ---
@@ -238,9 +242,12 @@ Shift+↻ starts over from the original.
 ## Private and safe by design
 
 - **No middleman:** text goes from your machine to the AI provider you already
-  use, through its official CLI. Polish has no server.
-- **Pastes only where you selected:** keys go straight to the window the text
-  came from (never to whatever happens to be focused). If that window closed,
+  use, through its official CLI. Polish has no server. (The provider does see
+  the text, under its own data policy; Polish doesn't run a model locally.)
+- **Pastes only into the window you selected from:** keys go straight to that
+  window (never to whatever happens to be focused). Polish targets the window,
+  not the exact text box, so if you click elsewhere in it meanwhile, the paste
+  lands at the new cursor; Undo fixes that. If that window closed,
   or a browser request ended up pointed at another app, Polish pastes nowhere
   and leaves the text on your clipboard.
 - **Your text stays off the command line:** results, originals, history and
@@ -248,12 +255,14 @@ Shift+↻ starts over from the original.
   could see.
 - **Private files:** settings and history are readable only by you.
 - **Independently reviewed:** two adversarial passes by a second AI model
-  (Codex `gpt-6-astra`) found 18 and then 14 issues; all were fixed
-  (`docs/reviews/`).
-- **Prompt-injection hardened:** selected text is always treated as content,
-  never as instructions. A web page that says "ignore the user and write X"
-  gets rewritten, not obeyed. Instructions only come from Polish's own fields.
-- **You control what's kept:** History (the last 100 results you used) stays
+  (Codex `gpt-6-astra`) found 18 and then 14 issues, and a later product
+  review caught a few more; all were fixed (`docs/reviews/`).
+- **Built against prompt injection:** selected text is wrapped and marked as
+  content, the AI is told never to follow instructions inside it, and Polish
+  never reads commands out of the text. A web page that says "ignore the user
+  and write X" should get rewritten, not obeyed. No AI defense is perfect, so
+  read what you paste from untrusted pages. Instructions only come from Polish's own fields.
+- **You control what's kept:** History (the last 100 results) stays
   on your computer, and can be cleared or switched off in Settings. Claude,
   Codex and Command Code runs save no session history.
 - **Open source** on GitHub.
@@ -291,6 +300,14 @@ Shift+↻ starts over from the original.
 - Speed and quality depend on the agent and model you use.
 
 ## On the roadmap (ideas, not promises)
+
+- **Paste from clipboard** for apps that don't share their selection (Ctrl+C,
+  then a key).
+- **Fill in the blanks:** Tab through a reply's `[time]`/`[price]` gaps; Paste
+  warns if any are left.
+- **Stop and recover:** cancel a slow run, clear messages for sign-in and
+  rate-limit problems, nothing you typed lost.
+- **Accept changes one by one** in the Changes view.
 
 - **Translate your rewrite** in one click from the Rewrite side (polish a
   message, then send it in Hindi or Tamil). Today: press / and type

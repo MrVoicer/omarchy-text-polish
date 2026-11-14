@@ -112,9 +112,11 @@ fi
 if [[ ${1:-} != --request || ! -s ${2:-} ]]; then echo "usage: apply.sh --stdin | undo" >&2; exit 2; fi
 req=$2
 how=$(jq -r '.how' "$req"); addr=$(jq -r '.addr // ""' "$req")
-text=$(jq -r '.text' "$req"); original=$(jq -r '.original // ""' "$req")
+text=$(jq -r '.text' "$req")
 label=$(jq -r '.label // ""' "$req"); editable=$(jq -r '.editable // "unknown"' "$req")
-rm -f "$req"
+# The request file holds the text; it goes whatever happens. (The undo state is
+# built from it with jq, so the original never becomes a jq argument.)
+trap 'rm -f "$req"' EXIT
 
 if [[ $how == insert ]]; then
   clip=" $text"   # space + text as one paste, so one undo removes all of it
@@ -144,8 +146,8 @@ if ! send "$pmods" "$vcode" "$addr"; then
 fi
 
 # Remember it for Undo, and offer the button.
-jq -n --arg addr "$addr" --arg class "$class" --arg how "$how" --arg original "$original" \
-  '{t: (now|floor), addr: $addr, class: $class, how: $how, original: $original}' | save_state
+jq --arg class "$class" \
+  '{t: (now|floor), addr: (.addr // ""), class: $class, how: .how, original: (.original // "")}' "$req" | save_state
 log "$how: class=$class"
 flock -u 8
 case $how in replace) verb=Replaced ;; insert) verb=Inserted ;; *) verb=Pasted ;; esac

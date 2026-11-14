@@ -14,7 +14,7 @@ Pick the agent from the pill in the popup's top-left corner, or cycle with
 | Claude | `claude -p --model sonnet` with tools, MCP and settings off (Haiku is as fast but misses proofreading fixes) |
 | Codex | `codex exec --ignore-user-config --ignore-rules --ephemeral`, `gpt-6-luna` at low effort (`POLISH_CODEX_MODEL`, `POLISH_CODEX_EFFORT`) |
 | OpenCode | `opencode run --agent plan` (your OpenCode default model) |
-| Command Code | `cmd -p --no-session --max-turns 1 --permission-mode plan` |
+| Command Code | `commandcode -p --no-session --max-turns 1 --permission-mode plan` |
 
 The choice is remembered in `~/.local/state/text-polish/agent`. With nothing
 saved, it falls back to `omarchy-default-agent`. `POLISH_AGENT=<id>` overrides
@@ -59,8 +59,8 @@ Switch **Rewrite | Reply** in the header (Alt+M), or right-click a message in
 Brave and choose **Reply with AI**. Reply drafts the answer to the selected
 message instead of restyling it. Type what you want to say in the box at the top
 ("yes, but Monday works better") and press Enter. With no intent it writes a
-neutral reply that commits to nothing. It never invents times, prices or
-promises: missing details become `[placeholders]`. Every tone applies
+neutral reply that commits to nothing. It's told never to invent times, prices or
+promises: missing details become `[placeholders]` (check before sending). Every tone applies
 (Proofread shows as **Standard**). If you edit a reply and regenerate, your
 edit is used as the draft. Buttons: **Paste** at your cursor in the source
 window, or **Copy** (copies and closes) to paste into the chat yourself.
