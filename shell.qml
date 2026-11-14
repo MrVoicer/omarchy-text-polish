@@ -115,6 +115,7 @@ ShellRoot {
   // The one real exit: drop this launch's input file, flush pending writes, quit.
   function finalQuit() {
     if (quitting) return
+    Object.keys(jobs).forEach(function(id) { root.stopJob(id) })   // nothing keeps running for a closed popup
     if (/\/input-[A-Za-z0-9]+\.txt$/.test(inputPath)) enqueueWrite(["rm", "-f", inputPath], "")
     quitting = true
     pumpWrites()
@@ -478,6 +479,8 @@ ShellRoot {
           else list.push({ id: f[0], label: f[1] })
         })
         root.agents = list
+        // The saved agent may have been uninstalled: use one that's there.
+        if (list.length && !list.some(function(a) { return a.id === cur })) cur = list[0].id
         root.agent = cur
         if (root.mode === "read" && !root.isReadStyle(root.style)) root.style = root.lastRead()
         if (root.mode !== "read" && !root.styleByKey(root.style)) root.style = "proofread"
@@ -606,9 +609,32 @@ ShellRoot {
     }
     var ct = customByKey(s), arg = s
     if (ct) { arg = "custom"; env.POLISH_TONE_NAME = ct.label; env.POLISH_TONE_PROMPT = ct.prompt; env.POLISH_TONE_SAMPLES = ct.samples || "" }
+    // setsid: each run gets its own session, so Stop can end the agent and its
+    // helpers (timeout, stream filter) together.
     var j = jobComp.createObject(root, { versionId: v.id, environment: env,
-      command: [dir + "/rewrite.sh", arg, inputPath] })
+      command: ["setsid", dir + "/rewrite.sh", arg, inputPath] })
+    jobs[v.id] = j
     j.running = true
+  }
+
+  // ---- stop -----------------------------------------------------------------
+  property var jobs: ({})            // version id -> running Process
+  function stopJob(id) {
+    var j = jobs[id]
+    delete jobs[id]
+    // setsid made the run a session leader: TERM everything in that session.
+    // (Not just its process group: timeout(1) moves the agent into a group of its own.)
+    if (j && j.processId > 1) Quickshell.execDetached(["pkill", "-TERM", "-s", String(j.processId)])
+  }
+  // Esc or the stop button while generating: end the run, keep everything else
+  // (your intent, Refine text, adjustments, earlier versions).
+  function stop() {
+    var v = current
+    if (!v || !v.busy) return false
+    stopJob(v.id)
+    v.stopped = true                 // finish() copies it; the footer says "Stopped", not "Failed"
+    finish(vi, false, "Stopped. Press Ctrl+R to try again, or Alt+A to use another agent.")
+    return true
   }
 
   function indexOfVersion(id) {
@@ -655,6 +681,7 @@ ShellRoot {
   }
 
   function jobExited(id) {
+    delete jobs[id]
     var i = indexOfVersion(id)
     if (i >= 0 && versions[i].busy) finish(i, false, "The agent exited without an answer.")
     var b = i < 0 ? prefetchOf(id) : null
@@ -1423,7 +1450,7 @@ ShellRoot {
       Keys.onPressed: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altDown() }
       Keys.onReleased: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altUp() }
       readonly property bool typing: historySearch.activeFocus || otherLang.activeFocus || toneName.activeFocus || tonePrompt.activeFocus || toneSamples.activeFocus || editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus || refineField.activeFocus
-      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : root.view === "tone" ? root.view = "settings" : root.langMenu ? root.langMenu = false : root.refineOpen ? root.closeRefine() : root.view === "history" ? root.closeHistory() : root.quit() }
+      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : root.view === "tone" ? root.view = "settings" : root.langMenu ? root.langMenu = false : root.refineOpen ? root.closeRefine() : root.view === "history" ? root.closeHistory() : root.stop() ? undefined : root.quit() }
       Shortcut { sequence: "Alt+H"; enabled: root.setting("keepHistory"); onActivated: root.view === "history" ? root.closeHistory() : root.openHistory() }
       Shortcut { sequence: "Alt+L"; enabled: root.view === "main" && langPill.visible; onActivated: root.langMenu = !root.langMenu }
       Shortcut { sequence: "/"; enabled: root.view === "main" && !card.typing; onActivated: root.openRefine() }
@@ -1644,7 +1671,7 @@ ShellRoot {
                   textFormat: TextEdit.PlainText
                   wrapMode: TextEdit.Wrap
                   selectByMouse: true
-                  color: root.current && !root.current.busy && !root.current.ok ? root.danger : root.fg
+                  color: root.current && !root.current.busy && !root.current.ok ? (root.current.stopped ? root.dim : root.danger) : root.fg
                   selectionColor: root.surface2
                   selectedTextColor: root.fg
                   font.family: root.font
@@ -1689,7 +1716,7 @@ ShellRoot {
                 visible: root.busy && !root.showOriginal && editor.length === 0
                 anchors { left: parent.left; top: parent.top; margins: 4 }
                 text: root.busyVerb() + " with " + (root.current ? root.current.agentLabel : root.agentLabel) + "…  "
-                      + root.fmtSecs(Math.max(0, root.now - (root.current ? root.current.startedAt : root.now)))
+                      + root.fmtSecs(Math.max(0, root.now - (root.current ? root.current.startedAt : root.now))) + "  \u00b7  Esc to stop"
                 textFormat: Text.PlainText
                 color: root.dim
                 font.family: root.font
@@ -1916,7 +1943,13 @@ ShellRoot {
                 ToolTip.visible: refHover.hovered; ToolTip.delay: 400; ToolTip.text: "Refine this version (/)"
                 HoverHandler { id: refHover }
               }
-              IconButton { glyph: "\u{F0450}"; enabled: !root.busy; onClicked: (mods) => root.regenerate(mods & Qt.ShiftModifier) }
+              // While generating it's a stop button (Esc does the same).
+              IconButton {
+                readonly property bool running: !!root.current && root.current.busy
+                glyph: running ? "\u{F04DB}" : "\u{F0450}"
+                enabled: running || !root.busy
+                onClicked: (mods) => running ? root.stop() : root.regenerate(mods & Qt.ShiftModifier)
+              }
             }
           }
         }
@@ -1964,6 +1997,7 @@ ShellRoot {
               if (v && !v.busy && v.warning) return "\u26A0 " + v.warning
               var head = !v ? "Starting\u2026"
                        : v.busy ? "Generating with " + v.agentLabel
+                       : v.stopped ? "Stopped " + v.agentLabel + " after " + root.fmtSecs(v.ms)
                        : (v.ok ? "Generated by " : "Failed with ") + v.agentLabel + " in " + root.fmtSecs(v.ms)
               return v ? head + " \u00b7 " + root.versionTags(v) : head
             }

@@ -5,6 +5,11 @@
 #          [--url U] [--window ADDR] [--from-browser]   (used by the browser's native host)
 #   polish --undo                undo the last Replace/Insert/Paste (SUPER+ALT+Z)
 #   polish --history             open the history of past results
+#   polish --clipboard [--mode M] use the clipboard (Ctrl+C) instead of the selection,
+#                                for apps that don't share what's highlighted. Copy-only
+#                                in Rewrite: Polish can't tell where clipboard text came
+#                                from, so it never pastes over anything (Reply's Paste,
+#                                at your cursor, still works).
 # With nothing selected, polish opens the history.
 # Without --style, the starting tone comes from apps.conf (window class/title/url).
 set -uo pipefail
@@ -14,7 +19,7 @@ DIR=$(dirname "$(readlink -f "$0")")
 [[ ${1:-} == --undo ]] && exec "$DIR/apply.sh" undo
 MAX_CHARS=20000
 
-style="" editable=unknown file="" mode=rewrite url="" view=main window="" from_browser=0
+style="" editable=unknown file="" mode=rewrite url="" view=main window="" from_browser=0 clipboard=0
 while (($#)); do
   case $1 in
     --style) style=$2; shift 2 ;;
@@ -25,6 +30,7 @@ while (($#)); do
     --window) window=$2; shift 2 ;;
     --from-browser) from_browser=1; shift ;;
     --history) view=history; shift ;;
+    --clipboard) clipboard=1; editable=no; shift ;;
     *) echo "unknown arg $1" >&2; exit 2 ;;
   esac
 done
@@ -46,6 +52,11 @@ find "$run" -maxdepth 1 -name 'input-*.txt' -mmin +1440 -delete 2>/dev/null
 input=$(mktemp "$run/input-XXXXXX.txt") || exit 1
 if [[ -n $file ]]; then
   cp -- "$file" "$input"; cleanup_file
+elif (( clipboard )); then
+  timeout 2 wl-paste --no-newline --type text >"$input" 2>/dev/null || : >"$input"
+  if [[ -z $(tr -d '[:space:]' <"$input") ]]; then
+    polish_toast "The clipboard has no text. Copy some first (Ctrl+C)."; rm -f "$input"; exit 0
+  fi
 else
   timeout 2 wl-paste --primary --no-newline --type text >"$input" 2>/dev/null || : >"$input"
 fi

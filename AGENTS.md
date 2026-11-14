@@ -125,6 +125,16 @@ source window and paste). Browser: `browser-extension/` →
 - **Keys go to a window, not to "whatever is focused".** apply.sh uses
   `hl.dsp.send_shortcut` (keycodes via xkbcli, active layout by index) for
   paste, Right and undo; no global `wtype` for those.
+- **Stopping a run:** the popup starts `rewrite.sh` under `setsid`, so each run
+  is its own session; Stop sends `pkill -TERM -s <pid>`. Not a process-group
+  kill: `timeout(1)` moves the agent into a group of its own. Bash defers its
+  TERM trap until the foreground pipeline ends, so the agent must die first
+  (Claude exits within ~1 s of TERM).
+- **Agent errors:** `lib.sh polish_agent_error` maps them to plain advice.
+  Match only the agent's own error lines: Codex echoes the whole prompt (the
+  user's text) to stderr, which must not be shown or pattern-matched.
+- **Clipboard tests:** don't overwrite the user's clipboard (it may hold an
+  image). Put a stand-in `wl-paste` script first in PATH instead.
 - **Every popup exit goes through `finalQuit()`**: it deletes this launch's
   input file and waits for the ordered write queue (settings/history) to drain.
 - **Testing traps:** `timeout` kills the whole process group, including

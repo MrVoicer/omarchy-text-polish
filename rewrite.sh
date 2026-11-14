@@ -36,6 +36,9 @@ work=$(polish_run_dir) || { printf 'E %s\n' '"No private runtime directory."'; e
 tmpfiles=()
 cleanup() { rm -f -- "${tmpfiles[@]}"; }
 trap cleanup EXIT
+# Stop (Esc while generating) TERMs our whole session (the popup starts
+# us with setsid); exit so the EXIT trap still removes the temp files.
+trap 'exit 143' TERM INT
 # newtmp VAR PREFIX: make a temp file, store its path in VAR, remember it for
 # cleanup (not via $(...), which would run in a subshell and lose the list).
 newtmp() { local -n _v=$1; _v=$(mktemp "$work/$2-XXXXXX") || return 1; tmpfiles+=("$_v"); }
@@ -277,6 +280,12 @@ case "$agent" in
   *)
     fail "Agent \"$agent\" is not supported (claude, codex, opencode, commandcode). Pick another in the popup header." ;;
 esac
+agent_label() { local e; for e in "${AGENTS[@]}"; do [[ ${e%%:*} == "$1" ]] && { echo "${e#*:}"; return; }; done; echo "$1"; }
+label=$(agent_label "$agent")
+if ! command -v "$agent" >/dev/null; then
+  for e in "${AGENTS[@]}"; do command -v "${e%%:*}" >/dev/null && fail "$label isn't installed. Switch agent with Alt+A."; done
+  fail "No AI agent found. Polish needs one of Claude Code, Codex, OpenCode or Command Code, installed and signed in."
+fi
 
 run_agent "$system" "$prompt"
 
@@ -305,9 +314,16 @@ Shorten it to at most 260 characters. Output only the post."
 fi
 
 if [[ $rc -ne 0 || -z ${out//[[:space:]]/} ]]; then
-  msg=$(tail -c 400 "$errf" 2>/dev/null); [[ $rc -eq 124 ]] && msg="Timed out waiting for $agent."
-  [[ -z $msg && -n $out ]] && msg=$(printf '%s' "$out" | tail -c 400)
-  fail "$agent failed (exit $rc). ${msg:-No output.}"
+  # Prefer the agent's own error lines: some agents (Codex) echo the whole
+  # prompt, your text included, to stderr, and that must not be shown or matched.
+  raw=$(grep -iE '^[[:space:]]*(\[?error|fatal|api error|stream error|invalid api key|not logged in|unauthori[sz]ed)' "$errf" 2>/dev/null | awk '!seen[$0]++' | tail -n 3)
+  [[ -n $raw ]] || raw=$(tail -c 400 "$errf" 2>/dev/null)
+  [[ -z ${raw//[[:space:]]/} && -n $out ]] && raw=$(printf '%s' "$out" | tail -c 400)
+  msg=$(polish_agent_error "$agent" "$label" "$rc" "$raw")
+  raw=$(printf '%s' "$raw" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
+  fail "$msg${raw:+
+
+Details: $raw}"
 fi
 # Strip a stray wrapper if the model echoed the tags.
 # Strip a stray wrapper the model echoed, but only a whole-output wrapper that

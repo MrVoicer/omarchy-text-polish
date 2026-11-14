@@ -184,6 +184,18 @@ Shift+↻ starts over from the original.
 - **Codex tuned** from ~9 s to ~5–6 s by skipping its heavy user config.
 - **Instant re-picks:** clicking a tone you already generated shows it
   immediately instead of regenerating.
+- **Stop any time:** Esc (or the ■ button) stops a slow run at once, agent and
+  all; your request, Refine text, adjustments and earlier versions stay.
+
+### When something goes wrong
+Errors come as one plain sentence with the next step, not a stack trace:
+"Claude isn't signed in. To fix it, run `claude` in a terminal and use
+/login. Or switch agent with Alt+A." Polish recognises sign-in, usage-limit
+and overload, network, model-access, not-installed and timeout problems for
+every agent; the raw error stays underneath for the curious. It never
+switches agents for you (that would send your text to another company
+without asking), and if your saved agent was uninstalled, it starts with one
+that's there.
 
 ---
 
@@ -206,6 +218,9 @@ Shift+↻ starts over from the original.
 
 - **Right Alt** opens Rewrite, **Shift + Right Alt** opens Reply,
   **SUPER + ALT + R / Y** as alternatives.
+- **App won't share its selection?** Press Ctrl+C, then **SUPER + ALT + C**:
+  Polish works on what you copied. (Copy-only in Rewrite, since clipboard text
+  could have come from anywhere; Reply's Paste at your cursor still works.)
 - **Hold Alt** and small keycaps appear on every control (1–8 on tones, A agent,
   M mode, S settings, J Adjust, D Changes, O Original). Let go and they vanish;
   a quick Alt+key never flashes them.
@@ -227,8 +242,9 @@ Shift+↻ starts over from the original.
 | Alt+O | Original |
 | Alt+S or Ctrl+, | Settings |
 | Alt+H | History |
+| Super+Alt+C | Polish the copied text (clipboard) |
 | Super+Alt+Z | Undo the last Replace / Insert / Paste |
-| Esc | Close the open panel, then the popup |
+| Esc | Stop a running generation; else close the open panel, then the popup |
 
 - **Mouse and touchpad:** the tone row scrolls with a swipe, the wheel, a drag,
   or by hovering the ‹ › edges (click to jump a page).
@@ -306,12 +322,7 @@ Shift+↻ starts over from the original.
 
 ## On the roadmap (ideas, not promises)
 
-- **Paste from clipboard** for apps that don't share their selection (Ctrl+C,
-  then a key).
-- **Stop and recover:** cancel a slow run, clear messages for sign-in and
-  rate-limit problems, nothing you typed lost.
 - **Accept changes one by one** in the Changes view.
-
 - **Translate your rewrite** in one click from the Rewrite side (polish a
   message, then send it in Hindi or Tamil). Today: press / and type
   "translate to Hindi"; Read always works on the original selection.

@@ -40,6 +40,12 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
   directly in Reply mode.
 - **Any app**: highlight text, press **SUPER + ALT + R** or tap **Right Alt** (reads the Wayland
   primary selection). Bound in `~/.config/hypr/bindings.lua`.
+- **Apps that don't share their selection**: Ctrl+C, then **SUPER + ALT + C**
+  (`polish --clipboard`) works on the clipboard instead. Copy-only in Rewrite
+  (the text could have come from anywhere, so nothing is pasted over).
+- **Stop**: Esc or the ■ button (the ↻ while generating) ends the run, agent
+  and all. Agent failures show one plain sentence with the fix (sign in, usage
+  limit, network, model, not installed, timeout), then the raw details.
   A system-wide right-click entry is not possible on Wayland: every app draws
   its own context menu.
 

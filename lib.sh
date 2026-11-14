@@ -32,3 +32,32 @@ polish_toast() {
   POLISH_MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[]|select(.focused).name') \
     setsid -f quickshell -p "$here/toast.qml" >"$run/toast.log" 2>&1 </dev/null 8>&- 9>&-   # never inherit a lock
 }
+
+# polish_agent_error ID LABEL RC RAW: what went wrong with an agent run, in one
+# plain sentence plus the next step (the raw error is appended by the caller).
+polish_agent_error() {
+  local id=$1 label=$2 rc=$3 raw=${4,,} login next="Retry with Ctrl+R, or switch agent with Alt+A."
+  case $id in
+    claude) login="run \"claude\" in a terminal and use /login" ;;
+    codex) login="run \"codex login\" in a terminal" ;;
+    opencode) login="run \"opencode auth login\" in a terminal" ;;
+    *) login="open $label in a terminal and sign in" ;;
+  esac
+  if (( rc == 124 )); then
+    echo "$label took too long, so Polish stopped it. $next"
+  elif (( rc == 127 )) || [[ $raw == *"command not found"* ]]; then
+    echo "$label isn't installed. Switch agent with Alt+A."
+  elif [[ $raw =~ (rate.?limit|usage.?limit|quota|too\ many\ requests|\ 429|limit\ reached|hit\ your\ limit|overloaded|\ 529|capacity) ]]; then
+    echo "$label is at its usage limit or overloaded right now. Try again later, or switch agent with Alt+A."
+  elif [[ $raw =~ (not\ logged\ in|please\ log\ ?in|/login|unauthori[sz]ed|\ 401|authenticat|api\ key|credential|token\ (has\ )?expired|invalid.*token|sign\ in) ]]; then
+    echo "$label isn't signed in. To fix it, $login. Or switch agent with Alt+A."
+  elif [[ $raw =~ (enotfound|econnrefused|econnreset|etimedout|getaddrinfo|could\ not\ resolve|network\ error|offline|connection\ (refused|reset|error)|failed\ to\ connect|error\ sending\ request) ]]; then
+    echo "Couldn't reach $label. Check your internet connection, then retry with Ctrl+R."
+  elif [[ $raw =~ model.*(not\ found|not\ available|not\ supported|does\ not\ exist|no\ access|not\ have\ access) ]]; then
+    echo "$label can't use the model it was asked for (check your plan or model setting). Switch agent with Alt+A."
+  elif (( rc == 0 )); then
+    echo "$label returned an empty answer. $next"
+  else
+    echo "$label failed (exit $rc). $next"
+  fi
+}
