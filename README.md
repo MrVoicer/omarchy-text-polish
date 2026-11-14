@@ -98,6 +98,21 @@ With Claude, text appears as it is written (`stream-json` deltas through
 `stream_filter.py`). The first words show in about 2s instead of waiting for
 the whole result. Other agents return all at once.
 
+## Undo
+After Replace, Insert or Paste, a notification offers **Undo** for 10 seconds;
+**SUPER + ALT + Z** (`polish --undo`) works for 10 minutes. It refocuses that
+window and sends the app's own undo (Ctrl+Z), so the original comes back
+exactly; Insert is a single paste so one undo removes it. Undo right away: if
+you've typed more, Ctrl+Z undoes your typing first. Terminals have no undo, so
+there it puts your original text on the clipboard instead.
+
+## History
+The results you use (Replace, Insert, Paste, Copy) and the one on screen when
+you close are saved: **Alt+H** or the clock button, or tap **Right Alt with
+nothing selected**. Search, click to copy. Last 100, in
+`~/.local/state/text-polish/history.jsonl` on this computer only; Settings has
+**Keep history** and **Clear history**.
+
 ## Refine
 Press **/** (or the ✎ button by ↻) for a one-line field above the text: type a
 one-off instruction such as "address it to Priya" and press **Enter**. Rewrite

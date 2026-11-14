@@ -151,6 +151,17 @@ Every generation is kept: switch tones, agents or adjustments and flip back
 with **← / →** or the `‹ n / N ›` pager. Each version remembers its tone, agent,
 timing and your hand edits. **Original** shows your untouched text in place.
 
+### Undo, one key
+Replaced the wrong thing? Click **Undo** on the notification, or press
+**Super + Alt + Z** within 10 minutes, and your original text is back exactly
+(Polish uses the app's own undo). In terminals, it hands the original back on
+your clipboard.
+
+### History
+Every result you used, searchable, one click to copy, even after the popup is
+gone. Tap Right Alt with nothing selected (or Alt+H) to open it. The last 100
+results, stored only on your computer; turn it off or clear it in Settings.
+
 ### Edit before you send
 The result is an editable text box. Your edits feed the next rewrite;
 Shift+↻ starts over from the original.
@@ -205,6 +216,8 @@ Shift+↻ starts over from the original.
 | Alt+D | Changes |
 | Alt+O | Original |
 | Alt+S or Ctrl+, | Settings |
+| Alt+H | History |
+| Super+Alt+Z | Undo the last Replace / Insert / Paste |
 | Esc | Close the open panel, then the popup |
 
 - **Mouse and touchpad:** the tone row scrolls with a swipe, the wheel, a drag,
@@ -228,9 +241,9 @@ Shift+↻ starts over from the original.
 - **Prompt-injection hardened:** selected text is always treated as content,
   never as instructions. A web page that says "ignore the user and write X"
   gets rewritten, not obeyed. Instructions only come from Polish's own fields.
-- **Little is kept:** versions live only while the popup is open; Claude,
-  Codex and Command Code runs save no session history. Polish itself stores
-  only your settings and agent choice.
+- **You control what's kept:** History (the last 100 results you used) stays
+  on your computer, and can be cleared or switched off in Settings. Claude,
+  Codex and Command Code runs save no session history.
 - **Open source** on GitHub.
 
 ---
@@ -267,6 +280,5 @@ Shift+↻ starts over from the original.
 ## On the roadmap (ideas, not promises)
 
 - Dictation cleanup after voice typing.
-- History across sessions and one-key undo of Replace.
 - Apply a pin to every Read action at once.
 - Other compositors and desktops.

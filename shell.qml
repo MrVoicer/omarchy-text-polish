@@ -41,7 +41,7 @@ ShellRoot {
   // in the background so switching is instant (costs an extra agent run).
   readonly property string settingsPath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/text-polish/settings.json"
   readonly property var defaultSettings: ({ order: builtinStyles.map(function(t) { return t.key }), tones: builtinStyles.map(function(t) { return t.key }),
-                                            showChanges: true, autoChanges: true, prefetch: false })
+                                            showChanges: true, autoChanges: true, prefetch: false, keepHistory: true })
   property var settings: defaultSettings
   function setting(k) { return settings[k] !== undefined ? settings[k] : defaultSettings[k] }
   // Changes made before the file has loaded are held and merged on top of it,
@@ -299,7 +299,10 @@ ShellRoot {
   readonly property var diff: showDiff && current && !current.busy ? diffHtml(diffBase(current), editor.text) : ({ html: "", count: 0 })
   function diffBase(v) { return v && v.source ? v.source : original }
   property bool copied: false
-  property string view: "main"              // "main" | "adjust"
+  // "main" | "adjust" | "settings" | "tone" | "history"
+  readonly property string startView: Quickshell.env("POLISH_VIEW") === "history" ? "history" : "main"
+  property string view: startView
+  readonly property bool historyOnly: startView === "history" && original.trim() === ""   // opened with nothing selected
   readonly property string original: inputFile.text()
 
   // Adjust panel state, remembered per tone: style -> { length, emoji, note }
@@ -412,7 +415,7 @@ ShellRoot {
         root.agent = cur
         if (root.mode === "read" && !root.isReadStyle(root.style)) root.style = root.lastRead()
         if (root.mode !== "read" && !root.styleByKey(root.style)) root.style = "proofread"
-        root.generate(root.style, {})
+        if (!root.historyOnly) root.generate(root.style, {})
       }
     }
   }
@@ -819,6 +822,80 @@ ShellRoot {
     return "Rewriting"
   }
 
+  // ---- history ------------------------------------------------------------
+  // Results you used (Replace/Insert/Paste/Copy) and the one on screen when you
+  // close are appended to history.jsonl (last 100). Settings: Keep history.
+  readonly property string historyPath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/text-polish/history.jsonl"
+  readonly property int historyMax: 100
+  property var history: []                  // newest first
+  property var recorded: ({})               // what this popup already saved
+  property string historyQuery: ""
+  property string historyFlash: ""
+  Timer { id: historyFlashTimer; interval: 1400; onTriggered: root.historyFlash = "" }
+  FileView {
+    id: historyFile
+    path: root.historyPath
+    blockLoading: true
+    onLoaded: {
+      var out = []
+      text().split("\n").forEach(function(l) { if (l.trim()) { try { out.push(JSON.parse(l)) } catch (e) {} } })
+      root.history = out.reverse()
+    }
+    onLoadFailed: root.history = []
+  }
+  function versionLabel(v) {
+    if (v.mode === "reply") return "Reply \u00b7 " + (v.style === "proofread" ? "Standard" : styleLabel(v.style))
+    if (v.mode === "read") return styleLabel(v.style) + (v.lang ? " \u2192 " + v.lang : "")
+    return styleLabel(v.style)
+  }
+  function recordHistory() {
+    var v = at()
+    if (!v || v.busy || !v.ok || !setting("keepHistory")) return
+    var text = finalText()
+    var key = v.id + "\u0000" + text
+    if (!text.trim() || recorded[key]) return
+    var r = Object.assign({}, recorded); r[key] = true; recorded = r
+    var e = { t: Date.now(), mode: v.mode, label: versionLabel(v), agent: v.agentLabel,
+              app: Quickshell.env("POLISH_APP") || "", src: original.slice(0, 300), text: text }
+    history = [e].concat(history).slice(0, historyMax)
+    Quickshell.execDetached(["sh", "-c",
+      'mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" >> "$1" && tail -n "$3" "$1" > "$1.tmp" && mv "$1.tmp" "$1"',
+      "sh", historyPath, JSON.stringify(e), String(historyMax)])
+  }
+  function clearHistory() {
+    history = []
+    Quickshell.execDetached(["rm", "-f", historyPath])
+  }
+  function openHistory() {
+    agentMenu = false; langMenu = false
+    historyFile.reload()
+    now = Date.now()
+    view = "history"
+    blurText()
+  }
+  function closeHistory() { if (historyOnly) Qt.quit(); else view = "main" }
+  function copyHistory(e) {
+    Quickshell.execDetached(["sh", "-c", 'printf %s "$1" | wl-copy', "sh", e.text])
+    historyFlash = "Copied"
+    historyFlashTimer.restart()
+  }
+  readonly property var historyShown: {
+    var q = historyQuery.trim().toLowerCase()
+    if (!q) return history
+    return history.filter(function(e) { return (e.text + " " + e.label + " " + (e.app || "")).toLowerCase().indexOf(q) >= 0 })
+  }
+  function ago(t) {
+    var s = Math.max(0, (now - t) / 1000)
+    if (s < 60) return "just now"
+    if (s < 3600) return Math.floor(s / 60) + " min ago"
+    if (s < 86400) return Math.floor(s / 3600) + " h ago"
+    var d = new Date(t)
+    return d.toLocaleDateString(Qt.locale(), "d MMM") + " " + d.toLocaleTimeString(Qt.locale(), "HH:mm")
+  }
+
+  // Every way of closing goes through here, so the result on screen is kept.
+  function quit() { recordHistory(); Qt.quit() }
+
   // ---- actions ------------------------------------------------------------
   // Clicking anything but a text box takes the cursor out of the text, so the
   // Left/Right arrows go back to paging versions.
@@ -828,6 +905,7 @@ ShellRoot {
 
   function copy() {
     if (busy || !current.ok) return
+    recordHistory()
     Quickshell.execDetached(["sh", "-c", 'printf %s "$1" | wl-copy', "sh", finalText()])
     copied = true
     copiedTimer.restart()
@@ -835,12 +913,15 @@ ShellRoot {
 
   function apply(how) {
     if (busy || !current.ok) return
-    Quickshell.execDetached([dir + "/apply.sh", how, windowAddr, finalText()])
+    recordHistory()
+    // ORIGINAL lets Undo hand your text back where the app has no undo (terminals).
+    Quickshell.execDetached([dir + "/apply.sh", how, windowAddr, finalText(), how === "replace" ? original : "", versionLabel(current)])
     Qt.quit()
   }
 
   function copyAndClose() {
     if (busy || !current.ok) return
+    recordHistory()
     Quickshell.execDetached(["sh", "-c", 'printf %s "$1" | wl-copy', "sh", finalText()])
     Qt.quit()
   }
@@ -1168,14 +1249,14 @@ ShellRoot {
       anchors.fill: parent
       color: "#000000"
       opacity: 0.35
-      MouseArea { anchors.fill: parent; onClicked: Qt.quit() }
+      MouseArea { anchors.fill: parent; onClicked: root.view === "history" && root.historyOnly ? Qt.quit() : root.quit() }
     }
 
     Rectangle {
       id: card
       width: Math.min(600, parent.width - 32)
       // Settings can outgrow the screen; it scrolls inside the card instead.
-      height: Math.min((root.view === "main" ? col.implicitHeight : root.view === "adjust" ? adjustCol.implicitHeight : root.view === "tone" ? toneCol.implicitHeight : settingsCol.implicitHeight) + 40,
+      height: Math.min((root.view === "main" ? col.implicitHeight : root.view === "adjust" ? adjustCol.implicitHeight : root.view === "tone" ? toneCol.implicitHeight : root.view === "history" ? historyCol.implicitHeight : settingsCol.implicitHeight) + 40,
                        parent.height - 48)
       anchors.centerIn: parent
       radius: 22
@@ -1193,8 +1274,9 @@ ShellRoot {
       // Alt press/release bubbles up here from whichever control has focus.
       Keys.onPressed: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altDown() }
       Keys.onReleased: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altUp() }
-      readonly property bool typing: otherLang.activeFocus || toneName.activeFocus || tonePrompt.activeFocus || toneSamples.activeFocus || editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus || refineField.activeFocus
-      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : root.view === "tone" ? root.view = "settings" : root.langMenu ? root.langMenu = false : root.refineOpen ? root.closeRefine() : Qt.quit() }
+      readonly property bool typing: historySearch.activeFocus || otherLang.activeFocus || toneName.activeFocus || tonePrompt.activeFocus || toneSamples.activeFocus || editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus || refineField.activeFocus
+      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : root.view === "tone" ? root.view = "settings" : root.langMenu ? root.langMenu = false : root.refineOpen ? root.closeRefine() : root.view === "history" ? root.closeHistory() : root.quit() }
+      Shortcut { sequence: "Alt+H"; enabled: root.setting("keepHistory"); onActivated: root.view === "history" ? root.closeHistory() : root.openHistory() }
       Shortcut { sequence: "Alt+L"; enabled: root.view === "main" && langPill.visible; onActivated: root.langMenu = !root.langMenu }
       Shortcut { sequence: "/"; enabled: root.view === "main" && !card.typing; onActivated: root.openRefine() }
       Shortcut { sequence: "Alt+D"; enabled: root.view === "main"; onActivated: root.toggleDiff() }
@@ -1291,8 +1373,13 @@ ShellRoot {
               }
             }
           }
-          IconButton { id: closeBtn; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0156}"; onClicked: Qt.quit() }
-          IconButton { anchors.right: closeBtn.left; anchors.rightMargin: 6; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0493}"; hint: "S"; onClicked: root.openSettings() }
+          IconButton { id: closeBtn; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0156}"; onClicked: root.quit() }
+          IconButton { id: gearBtn; anchors.right: closeBtn.left; anchors.rightMargin: 6; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0493}"; hint: "S"; onClicked: root.openSettings() }
+          IconButton {
+            visible: root.setting("keepHistory")
+            anchors.right: gearBtn.left; anchors.rightMargin: 6; anchors.verticalCenter: parent.verticalCenter
+            glyph: "\u{F02DA}"; hint: "H"; onClicked: root.openHistory()
+          }
         }
 
         // Reply mode: what you want to say (Enter drafts the reply)
@@ -1672,7 +1759,7 @@ ShellRoot {
           ActionButton {
             label: root.mode === "reply" ? "Paste" : (parent.writes ? "Insert" : "Close")
             enabled: parent.writes ? (!root.busy && root.current.ok) : true
-            onClicked: root.mode === "reply" ? root.apply("paste") : (parent.writes ? root.apply("insert") : Qt.quit())
+            onClicked: root.mode === "reply" ? root.apply("paste") : (parent.writes ? root.apply("insert") : root.quit())
           }
           ActionButton {
             label: root.mode === "reply" ? "Copy" : (parent.writes ? "Replace" : "Copy")
@@ -1714,7 +1801,7 @@ ShellRoot {
               contentItem: Text {
                 text: "Esc close \u00b7 Ctrl+Enter " + (root.editable ? "replace" : "copy") + " \u00b7 Ctrl+Shift+Enter insert\n"
                     + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate (Shift+\u21BB or Ctrl+Shift+R: from original) \u00b7 Alt+1\u20138 tone\n"
-                    + "/ refine \u00b7 Alt+L translate language \u00b7 Hold Alt to see keys \u00b7 Alt+M rewrite/reply/read \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
+                    + "/ refine \u00b7 Alt+H history \u00b7 Alt+L translate language \u00b7 Hold Alt to see keys \u00b7 Alt+M rewrite/reply/read \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
                 textFormat: Text.PlainText
                 color: root.fg
                 font.family: root.font
@@ -2098,6 +2185,21 @@ ShellRoot {
           onToggled: root.setSetting("autoChanges", !checked)
         }
         Toggle {
+          label: "Keep history"
+          detail: "Saves the last " + root.historyMax + " results you used, on this computer only (Alt+H, or Right Alt with nothing selected)."
+          checked: root.setting("keepHistory")
+          onToggled: root.setSetting("keepHistory", !checked)
+        }
+        Text {
+          visible: root.history.length > 0
+          Layout.alignment: Qt.AlignRight
+          text: "Clear history (" + root.history.length + ")"
+          textFormat: Text.PlainText
+          color: chMouse.containsMouse ? root.danger : root.dim
+          font.family: root.font; font.pixelSize: 12
+          MouseArea { id: chMouse; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.clearHistory() }
+        }
+        Toggle {
           label: "Prepare next tone"
           detail: "Writes the next chip's version in the background, so switching to it is instant. Uses one extra agent run each time."
           checked: root.setting("prefetch")
@@ -2115,6 +2217,120 @@ ShellRoot {
       }
 
       }   // settingsFlick
+
+      // ================= history view =================
+      ColumnLayout {
+        id: historyCol
+        visible: root.view === "history"
+        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 }
+        spacing: 12
+
+        Item {
+          Layout.fillWidth: true
+          implicitHeight: 38
+          Text {
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+            text: root.historyOnly ? "Close" : "Back"
+            textFormat: Text.PlainText
+            color: hbMouse.containsMouse ? root.fg : root.dim
+            font.family: root.font; font.pixelSize: 15
+            MouseArea { id: hbMouse; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.closeHistory() }
+          }
+          Text {
+            anchors.centerIn: parent
+            text: "History"
+            textFormat: Text.PlainText
+            color: root.fg
+            font.family: root.font; font.pixelSize: 20; font.weight: Font.DemiBold
+          }
+          Text {
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            text: root.historyFlash
+            textFormat: Text.PlainText
+            color: root.accent; font.family: root.font; font.pixelSize: 13
+          }
+        }
+
+        Text {
+          visible: root.historyOnly
+          Layout.fillWidth: true
+          text: "Nothing was selected, so here's your history. Select text first to rewrite it."
+          textFormat: Text.PlainText; wrapMode: Text.Wrap
+          color: root.dim; font.family: root.font; font.pixelSize: 12
+        }
+
+        Rectangle {
+          Layout.fillWidth: true
+          implicitHeight: 40
+          radius: 20
+          color: root.surface
+          border.width: historySearch.activeFocus ? 1 : 0
+          border.color: root.accent
+          TextField {
+            id: historySearch
+            anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
+            placeholderText: "\u{F0349}  Search " + root.history.length + (root.history.length === 1 ? " result" : " results")
+            placeholderTextColor: root.faint
+            color: root.fg; selectionColor: root.surface2
+            font.family: root.font; font.pixelSize: 13
+            background: null
+            onTextChanged: root.historyQuery = text
+          }
+        }
+
+        ListView {
+          id: historyList
+          Layout.fillWidth: true
+          Layout.preferredHeight: Math.max(60, Math.min(contentHeight, 440))
+          clip: true
+          spacing: 8
+          boundsBehavior: Flickable.StopAtBounds
+          model: root.historyShown
+          ScrollBar.vertical: ScrollBar { policy: historyList.contentHeight > historyList.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff }
+          delegate: Rectangle {
+            required property var modelData
+            width: historyList.width - (historyList.contentHeight > historyList.height ? 10 : 0)
+            implicitHeight: hCol.implicitHeight + 20
+            height: implicitHeight
+            radius: 14
+            color: hMouse.containsMouse ? root.surface2 : root.surface
+            ColumnLayout {
+              id: hCol
+              anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10; leftMargin: 14; rightMargin: 14 }
+              spacing: 4
+              Text {
+                Layout.fillWidth: true
+                text: modelData.label + (modelData.app ? " \u00b7 " + modelData.app : "") + " \u00b7 " + root.ago(modelData.t)
+                textFormat: Text.PlainText; elide: Text.ElideRight
+                color: root.dim; font.family: root.font; font.pixelSize: 11
+              }
+              Text {
+                Layout.fillWidth: true
+                text: modelData.text
+                textFormat: Text.PlainText; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight
+                color: root.fg; font.family: root.font; font.pixelSize: 13
+              }
+            }
+            MouseArea { id: hMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.copyHistory(modelData) }
+          }
+        }
+
+        Text {
+          visible: root.historyShown.length === 0
+          Layout.fillWidth: true
+          horizontalAlignment: Text.AlignHCenter
+          text: root.history.length === 0 ? "Nothing yet. Results you use are saved here." : "No matches."
+          textFormat: Text.PlainText
+          color: root.dim; font.family: root.font; font.pixelSize: 12
+        }
+        Text {
+          Layout.fillWidth: true
+          horizontalAlignment: Text.AlignHCenter
+          text: "Click a result to copy it \u00b7 last " + root.historyMax + ", kept on this computer"
+          textFormat: Text.PlainText
+          color: root.dim; font.family: root.font; font.pixelSize: 11
+        }
+      }
 
       // ================= tone editor view =================
       ColumnLayout {

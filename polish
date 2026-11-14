@@ -3,14 +3,18 @@
 #   polish                       use the primary selection (whatever is highlighted)
 #   polish --file F [--style S] [--editable yes|no] [--mode rewrite|reply|read] [--url U]
 #                                (used by the browser extension)
+#   polish --undo                undo the last Replace/Insert/Paste (SUPER+ALT+Z)
+#   polish --history             open the history of past results
+# With nothing selected, polish opens the history.
 # Without --style, the starting tone comes from apps.conf (window class/title/url).
 set -uo pipefail
 DIR=$(dirname "$(readlink -f "$0")")
+[[ ${1:-} == --undo ]] && exec "$DIR/apply.sh" undo
 # Already open? Leave it alone. Pressing Right Alt inside the popup (as the
 # Alt of Alt+M, Alt+1...) fires the global shortcut too; relaunching would
 # close the popup you are using.
 if pgrep -f "quickshell -p $DIR/shell.qml" >/dev/null 2>&1; then exit 0; fi
-style="" editable=unknown file="" mode=rewrite url=""
+style="" editable=unknown file="" mode=rewrite url="" view=main
 while (($#)); do
   case $1 in
     --style) style=$2; shift 2 ;;
@@ -18,6 +22,7 @@ while (($#)); do
     --editable) editable=$2; shift 2 ;;
     --mode) mode=$2; shift 2 ;;
     --url) url=$2; shift 2 ;;
+    --history) view=history; shift ;;
     *) echo "unknown arg $1" >&2; exit 2 ;;
   esac
 done
@@ -29,9 +34,12 @@ if [[ -n $file ]]; then
 else
   timeout 2 wl-paste --primary --no-newline --type text >"$input" 2>/dev/null || : >"$input"
 fi
-if [[ -z $(tr -d '[:space:]' <"$input") ]]; then
-  notify-send -a "Polish" "Polish" "Select some text first."
-  exit 0
+[[ $view == history ]] && : >"$input"
+if [[ $view != history && -z $(tr -d '[:space:]' <"$input") ]]; then
+  # Nothing selected: show the history instead (if it's kept).
+  hist="${XDG_STATE_HOME:-$HOME/.local/state}/text-polish/history.jsonl"
+  if [[ -s $hist ]]; then view=history
+  else notify-send -a "Polish" "Polish" "Select some text first."; exit 0; fi
 fi
 head -c 20000 "$input" >"$input.tmp" && mv "$input.tmp" "$input"
 
@@ -56,6 +64,8 @@ else
   case "$style" in summarize|keypoints|explain|translate) style=proofread ;; esac
 fi
 
+export POLISH_VIEW=$view
+export POLISH_APP=$(jq -r '.class // empty' <<<"$win")
 export POLISH_INPUT=$input POLISH_MODE_START=$mode POLISH_STYLE=$style POLISH_EDITABLE=$editable POLISH_DIR=$DIR
 export POLISH_WINDOW=$(jq -r '.address // empty' <<<"$win")
 export POLISH_MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[]|select(.focused).name')
