@@ -6,6 +6,10 @@
 # Without --style, the starting tone comes from apps.conf (window class/title/url).
 set -uo pipefail
 DIR=$(dirname "$(readlink -f "$0")")
+# Already open? Leave it alone. Pressing Right Alt inside the popup (as the
+# Alt of Alt+M, Alt+1...) fires the global shortcut too; relaunching would
+# close the popup you are using.
+if pgrep -f "quickshell -p $DIR/shell.qml" >/dev/null 2>&1; then exit 0; fi
 style="" editable=unknown file="" mode=rewrite url=""
 while (($#)); do
   case $1 in
@@ -48,5 +52,4 @@ fi
 export POLISH_INPUT=$input POLISH_MODE_START=$mode POLISH_STYLE=$style POLISH_EDITABLE=$editable POLISH_DIR=$DIR
 export POLISH_WINDOW=$(jq -r '.address // empty' <<<"$win")
 export POLISH_MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[]|select(.focused).name')
-pkill -f "quickshell -p $DIR/shell.qml" 2>/dev/null
 exec setsid -f quickshell -p "$DIR/shell.qml" >"$run/popup.log" 2>&1 </dev/null
