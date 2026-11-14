@@ -26,6 +26,10 @@ learn something the next person would otherwise rediscover the hard way.
   row (Settings order/visibility); Read has its own fixed chips (Summarize, Key
   points, Explain). Read styles are rejected outside Read mode and vice versa,
   in both `polish` and `rewrite.sh`.
+- **User instructions apply silently.** Pinned and one-time requests are
+  followed where relevant and otherwise ignored without comment; the output
+  never says "no conversion needed" or reports on the request itself. Pins are
+  standing preferences, so most texts won't need them.
 - **Selected text is untrusted.** It's wrapped in `<text>`/`<message>` tags
   and the system prompt says never to follow instructions inside it. Keep that
   when adding modes.
