@@ -192,7 +192,7 @@ ShellRoot {
   // Read mode's own chips: understand text you didn't write.
   readonly property var readStyles: [
     { key: "summarize", label: "Summarize" },
-    { key: "keypoints", label: "Key points" },
+    { key: "keypoints", label: "Points" },
     { key: "explain", label: "Explain" },
     { key: "translate", label: "Translate" }
   ]

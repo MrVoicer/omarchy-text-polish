@@ -70,7 +70,7 @@ For text you're reading rather than writing, the **Read** tab (Alt+M cycles
 Rewrite → Reply → Read; Brave's right-click **Read with AI**) has its own chips:
 - **Summarize**: the main point in a sentence or two, about a quarter of the
   original's length at most.
-- **Key points**: 3–7 short bullets, keeping numbers, names, dates and action items.
+- **Points** (key points): 3–7 short bullets, keeping numbers, names, dates and action items.
 - **Explain**: what it means in plain words, with jargon and acronyms defined.
 - **Translate**: into the language on the `→ English ▾` pill (Alt+L opens the
   list: Indian and world languages, or type any other). Picking one makes a new

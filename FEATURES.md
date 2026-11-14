@@ -83,7 +83,7 @@ For articles, threads, docs and jargon:
 | Action | What it does |
 |---|---|
 | **Summarize** | The main point in a sentence or two, at most about a quarter of the original. |
-| **Key points** | 3–7 short bullets keeping numbers, names, dates and action items. |
+| **Points** (key points) | 3–7 short bullets keeping numbers, names, dates and action items. |
 | **Explain** | Plain-language meaning, jargon and acronyms defined, why it matters. |
 | **Translate** | Natural, fluent translation into 20+ languages (or any you type), keeping tone, names, numbers and formatting. Understands mixed and romanized text like Hinglish and Tanglish. |
 
