@@ -21,6 +21,13 @@ fi
 
 exec </dev/null   # agents like opencode wait for EOF on an inherited open stdin
 style=${1:?style}; input=${2:?input file}
+# The popup sets POLISH_SOURCE_TEXT when you edited a version: rewrite that instead of the selection.
+if [[ -n ${POLISH_SOURCE_TEXT:-} ]]; then
+  mkdir -p "${XDG_RUNTIME_DIR:-/tmp}/text-polish"
+  input=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/text-polish/source-XXXXXX")
+  trap 'rm -f "$input"' EXIT
+  printf '%s' "${POLISH_SOURCE_TEXT:0:20000}" >"$input"
+fi
 
 len=$(LC_ALL=C.UTF-8 wc -m <"$input"); half=$(( len / 2 )); punchy_len=$(( len * 65 / 100 ))
 case "$style" in

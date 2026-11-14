@@ -41,7 +41,8 @@ ShellRoot {
   readonly property var emojiArgs: ["none", "few", "moderate", "lots"]
 
   // ---- versions -----------------------------------------------------------
-  // Each: { id, style, agent, agentLabel, length, emoji, note, busy, ok, text, ms, startedAt }
+  // Each: { id, style, agent, agentLabel, length, emoji, note, source, edited, busy, ok, text, ms, startedAt }
+  // source: text this version rewrote ("" = the original selection); edited: you changed its text.
   property var versions: []
   property int vi: -1                       // index of the version on screen
   property int nextId: 1
@@ -152,10 +153,21 @@ ShellRoot {
   }
 
   // opts: { length: "short"|"long"|"", emoji: "none"|"few"|"moderate"|"lots"|"", note: string }
+  // What the next generation rewrites: your edited text if you changed the
+  // version on screen, otherwise whatever that version was rewritten from.
+  function baseSource(fromOriginal) {
+    if (fromOriginal) return ""
+    var c = at()
+    if (!c) return ""
+    if (c.ok && c.edited && c.text.trim() !== "") return c.text
+    return c.source || ""
+  }
+
   function generate(s, opts) {
     var v = {
       id: nextId++, style: s, agent: agent, agentLabel: agentLabel,
       length: opts.length || "", emoji: opts.emoji || "", note: (opts.note || "").trim(),
+      source: baseSource(opts.fromOriginal), edited: false,
       busy: true, ok: false, text: "", ms: 0, startedAt: Date.now()
     }
     versions = versions.concat([v])
@@ -164,7 +176,7 @@ ShellRoot {
     copied = false
     now = Date.now()
     vi = versions.length - 1
-    var env = { POLISH_LENGTH: v.length, POLISH_EMOJI: v.emoji, POLISH_NOTE: v.note }
+    var env = { POLISH_LENGTH: v.length, POLISH_EMOJI: v.emoji, POLISH_NOTE: v.note, POLISH_SOURCE_TEXT: v.source }
     if (agent) env.POLISH_AGENT = agent
     var j = jobComp.createObject(root, { versionId: v.id, environment: env,
       command: [dir + "/rewrite.sh", s, inputPath] })
@@ -225,9 +237,12 @@ ShellRoot {
     if (view === "adjust") switchAdjustTone(k); else pick(k)
   }
 
-  function regenerate() {
-    var c = current
-    generate(c ? c.style : style, c ? { length: c.length, emoji: c.emoji, note: c.note } : {})
+  // fromOriginal (Shift+click or Ctrl+Shift+R): rewrite the original selection, ignoring edits.
+  function regenerate(fromOriginal) {
+    var c = at()
+    var o = c ? { length: c.length, emoji: c.emoji, note: c.note } : {}
+    o.fromOriginal = !!fromOriginal
+    generate(c ? c.style : style, o)
   }
 
   // ---- adjust panel -------------------------------------------------------
@@ -262,6 +277,8 @@ ShellRoot {
   function versionTags(v) {
     if (!v) return ""
     var t = [styleLabel(v.style)]
+    if (v.source) t.push("from your edit")
+    if (v.edited) t.push("edited")
     if (v.length) t.push(v.length === "short" ? "short" : "long")
     if (v.emoji) t.push(v.emoji === "none" ? "no emoji" : v.emoji + " emoji")
     if (v.note) t.push("“" + (v.note.length > 28 ? v.note.slice(0, 27) + "…" : v.note) + "”")
@@ -331,12 +348,12 @@ ShellRoot {
   component IconButton: Rectangle {
     id: ib
     property string glyph
-    signal clicked
+    signal clicked(int mods)
     width: 38; height: 38; radius: 19
     color: ibMouse.containsMouse && ib.enabled ? root.surface2 : root.surface
     opacity: enabled ? 1 : 0.4
     Text { anchors.centerIn: parent; text: ib.glyph; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 16 }
-    MouseArea { id: ibMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); if (ib.enabled) ib.clicked() } }
+    MouseArea { id: ibMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: (m) => { root.blurText(); if (ib.enabled) ib.clicked(m.modifiers) } }
   }
 
   component ActionButton: Rectangle {
@@ -537,7 +554,8 @@ ShellRoot {
       Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.view = "main" : Qt.quit() }
       Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; onActivated: root.view === "adjust" ? root.generateAdjusted() : (root.editable ? root.apply("replace") : root.copy()) }
       Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.editable && root.view === "main"; onActivated: root.apply("insert") }
-      Shortcut { sequence: "Ctrl+R"; enabled: root.view === "main"; onActivated: root.regenerate() }
+      Shortcut { sequence: "Ctrl+R"; enabled: root.view === "main"; onActivated: root.regenerate(false) }
+      Shortcut { sequence: "Ctrl+Shift+R"; enabled: root.view === "main"; onActivated: root.regenerate(true) }
       // Left/Right page through versions unless a text box has the cursor; Alt+Left/Right always do.
       Shortcut { sequence: "Left"; enabled: root.view === "main" && !card.typing; onActivated: root.go(-1) }
       Shortcut { sequence: "Right"; enabled: root.view === "main" && !card.typing; onActivated: root.go(1) }
@@ -637,7 +655,10 @@ ShellRoot {
                   // Keep hand edits with their version so paging away and back preserves them.
                   onTextChanged: {
                     var v = root.at()
-                    if (!root.loadingEditor && v && !v.busy && v.ok) v.text = text
+                    if (!root.loadingEditor && v && !v.busy && v.ok && v.text !== text) {
+                      v.text = text
+                      if (!v.edited) { v.edited = true; root.versions = root.versions.slice() }  // refresh footer tag
+                    }
                   }
                 }
               }
@@ -748,7 +769,7 @@ ShellRoot {
                   }
                 }
               }
-              IconButton { glyph: "\u{F0450}"; enabled: !root.busy; onClicked: root.regenerate() }
+              IconButton { glyph: "\u{F0450}"; enabled: !root.busy; onClicked: (mods) => root.regenerate(mods & Qt.ShiftModifier) }
             }
           }
         }
@@ -810,7 +831,7 @@ ShellRoot {
               delay: 150
               contentItem: Text {
                 text: "Esc close \u00b7 Ctrl+Enter " + (root.editable ? "replace" : "copy") + " \u00b7 Ctrl+Shift+Enter insert\n"
-                    + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate \u00b7 Alt+1\u20138 tone\n"
+                    + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate (Shift+\u21BB or Ctrl+Shift+R: from original) \u00b7 Alt+1\u20138 tone\n"
                     + "Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original"
                 textFormat: Text.PlainText
                 color: root.fg

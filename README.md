@@ -57,6 +57,10 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
   anywhere outside the text hands the arrows back to paging. Each version keeps its tone, agent, timing and any
   hand edits. Clicking a tone chip jumps to its latest version instead of
   regenerating; ↻ adds a fresh version.
+- **Your edits feed the next rewrite.** If you edit the version on screen, ↻,
+  Adjust → Generate and new tones rewrite your edited text (the footer says
+  "from your edit"). **Shift+click ↻** (or Ctrl+Shift+R) rewrites the original
+  selection instead.
 - **Adjust** (Alt+J) opens a panel with tone chips, a **Length** slider
   (Short / Moderate = the tone's default / Long), an **Emoji** slider
   (None / Few / Moderate / Lots) and a free-text request such as "address it
