@@ -20,7 +20,7 @@ ShellRoot {
   readonly property string windowAddr: Quickshell.env("POLISH_WINDOW") || ""
   readonly property bool editable: (Quickshell.env("POLISH_EDITABLE") || "unknown") !== "no"
 
-  readonly property var styles: [
+  readonly property var builtinStyles: [
     { key: "proofread", label: "Proofread" },
     { key: "tweet", label: "Tweet" },
     { key: "casual", label: "Casual" },
@@ -30,32 +30,51 @@ ShellRoot {
     { key: "formal", label: "Formal" },
     { key: "witty", label: "Witty" }
   ]
+  // Built-in tones plus the ones you made in Settings (custom: true).
+  readonly property var styles: builtinStyles.concat(customTones().map(function(t) {
+    return { key: t.key, label: t.label, custom: true }
+  }))
   // ---- settings (per user, outside the repo) ------------------------------
   // order: all tones in your row order. tones: which of them show.
   // showChanges: the Changes view (#4).
   // autoChanges: Proofread opens on Changes. prefetch: prepare the next tone
   // in the background so switching is instant (costs an extra agent run).
   readonly property string settingsPath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/text-polish/settings.json"
-  readonly property var defaultSettings: ({ order: styles.map(function(t) { return t.key }), tones: styles.map(function(t) { return t.key }),
+  readonly property var defaultSettings: ({ order: builtinStyles.map(function(t) { return t.key }), tones: builtinStyles.map(function(t) { return t.key }),
                                             showChanges: true, autoChanges: true, prefetch: false })
   property var settings: defaultSettings
   function setting(k) { return settings[k] !== undefined ? settings[k] : defaultSettings[k] }
-  function setSetting(k, val) {
-    var o = Object.assign({}, settings)
-    o[k] = val
-    settings = o
+  // Changes made before the file has loaded are held and merged on top of it,
+  // so an early save can never overwrite your settings with defaults.
+  property bool settingsReady: false
+  property var pendingSettings: ({})
+  function updateSettings(changes) {
+    settings = Object.assign({}, settings, changes)
+    if (!settingsReady) { pendingSettings = Object.assign({}, pendingSettings, changes); return }
+    writeSettings()
+  }
+  function setSetting(k, val) { var c = {}; c[k] = val; updateSettings(c) }
+  function writeSettings() {
     Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" > "$1.tmp" && mv "$1.tmp" "$1"',
-                             "sh", settingsPath, JSON.stringify(o, null, 2)])
+                             "sh", settingsPath, JSON.stringify(settings, null, 2)])
+  }
+  function settingsLoaded(fromFile) {
+    var pend = Object.keys(pendingSettings).length > 0
+    settings = Object.assign({}, defaultSettings, fromFile || {}, pendingSettings)
+    pendingSettings = {}
+    settingsReady = true
+    if (pend) writeSettings()
   }
   FileView {
     path: root.settingsPath
     blockLoading: true
     onLoaded: {
-      try {
-        var o = JSON.parse(text())
-        if (o && typeof o === "object") root.settings = Object.assign({}, root.defaultSettings, o)
-      } catch (e) {}
+      var o = null
+      try { o = JSON.parse(text()) } catch (e) {}
+      if (o && typeof o === "object") root.settingsLoaded(o)
+      else root.settingsReady = true   // unreadable file: keep it untouched until you change a setting
     }
+    onLoadFailed: root.settingsLoaded(null)   // no file yet: defaults
   }
   // All tones in your order (unknown keys dropped, new tones appended).
   readonly property var orderedStyles: {
@@ -64,6 +83,77 @@ ShellRoot {
     styles.forEach(function(t) { if (out.indexOf(t) < 0) out.push(t) })
     return out
   }
+  // ---- custom tones -------------------------------------------------------
+  // settings.customTones: [{ key, label, prompt, samples }]. key is "c-<id>";
+  // rewrite.sh gets style "custom" plus POLISH_TONE_* env.
+  readonly property int maxCustomTones: 8
+  function customTones() { var c = settings.customTones; return Array.isArray(c) ? c : [] }
+  function customByKey(k) {
+    var c = customTones()
+    for (var i = 0; i < c.length; i++) if (c[i].key === k) return c[i]
+    return null
+  }
+  function saveCustomTone(t) {          // add (no key) or update
+    var c = customTones().slice(), isNew = !t.key
+    if (isNew) {
+      if (c.length >= maxCustomTones) return ""
+      t.key = "c-" + Date.now().toString(36)
+      c.push(t)
+    } else {
+      for (var i = 0; i < c.length; i++) if (c[i].key === t.key) c[i] = t
+    }
+    var ch = { customTones: c }
+    if (isNew) {                        // show the new chip at the end of your row
+      ch.tones = setting("tones").concat([t.key])
+      ch.order = orderedStyles.map(function(x) { return x.key }).concat([t.key])
+    }
+    updateSettings(ch)
+    return t.key
+  }
+  function deleteCustomTone(k) {
+    var pins = Object.assign({}, setting("pins") || {})
+    delete pins["rewrite:" + k]; delete pins["reply:" + k]
+    updateSettings({
+      customTones: customTones().filter(function(x) { return x.key !== k }),
+      tones: setting("tones").filter(function(x) { return x !== k }),
+      order: setting("order").filter(function(x) { return x !== k }),
+      pins: pins
+    })
+  }
+  readonly property var toneTemplates: [
+    { label: "Sounds like me", prompt: "Rewrite it the way I write: match the voice in my samples. Keep it natural, not polished or corporate.", samplesHint: true },
+    { label: "LinkedIn post", prompt: "A LinkedIn post: a strong first line, short paragraphs with line breaks, professional but personal, one clear takeaway, no hashtag spam (at most 3 at the end), no cringe or humblebrag." },
+    { label: "Client update", prompt: "A status update for a client: lead with the outcome, then progress, next steps and any decision needed, with dates. Calm, confident, no jargon." },
+    { label: "Family chat", prompt: "A warm message for family on WhatsApp: simple words, affectionate, a fitting emoji or two, short." }
+  ]
+
+  // Tone editor (view "tone"): editKey "" = new tone.
+  property string editKey: ""
+  function openToneEditor(k) {
+    var t = k ? customByKey(k) : null
+    editKey = k || ""
+    toneName.text = t ? t.label : ""
+    tonePrompt.text = t ? t.prompt : ""
+    toneSamples.text = t ? (t.samples || "") : ""
+    view = "tone"
+    toneName.forceActiveFocus()
+  }
+  function applyTemplate(tp) {
+    if (!toneName.text.trim()) toneName.text = tp.label
+    tonePrompt.text = tp.prompt
+    if (tp.samplesHint) toneSamples.forceActiveFocus()
+  }
+  function saveToneEditor() {
+    var name = toneName.text.trim(), prompt = tonePrompt.text.trim()
+    if (!name || !prompt) return
+    saveCustomTone({ key: editKey, label: name.slice(0, 20), prompt: prompt.slice(0, 1500), samples: toneSamples.text.trim().slice(0, 4000) })
+    view = "settings"
+  }
+  function deleteToneEditor() {
+    if (editKey) deleteCustomTone(editKey)
+    view = "settings"
+  }
+
   function styleByKey(k) {
     for (var i = 0; i < styles.length; i++) if (styles[i].key === k) return styles[i]
     return null
@@ -82,11 +172,9 @@ ShellRoot {
     o.splice(to > from ? to - 1 : to, 0, k)
     setSetting("order", o)
   }
-  function resetTones() {
-    var o = Object.assign({}, settings)
-    o.order = defaultSettings.order; o.tones = defaultSettings.tones
-    settings = o
-    setSetting("order", defaultSettings.order)
+  function resetTones() {                // default order, everything shown (custom tones at the end)
+    var all = styles.map(function(t) { return t.key })
+    updateSettings({ order: all, tones: all })
   }
 
   // Hold Alt (~0.3s, so quick Alt+key combos don't flash) to see shortcut hints.
@@ -322,6 +410,7 @@ ShellRoot {
         root.agents = list
         root.agent = cur
         if (root.mode === "read" && !root.isReadStyle(root.style)) root.style = root.lastRead()
+        if (root.mode !== "read" && !root.styleByKey(root.style)) root.style = "proofread"
         root.generate(root.style, {})
       }
     }
@@ -428,8 +517,10 @@ ShellRoot {
     var env = { POLISH_LENGTH: v.length, POLISH_EMOJI: v.emoji, POLISH_NOTE: v.pins.concat(v.note ? [v.note] : []).join("\n"), POLISH_SOURCE_TEXT: v.source,
                 POLISH_MODE: v.mode, POLISH_INTENT: v.intent, POLISH_DRAFT: v.draft, POLISH_STREAM: "1" }
     if (agent) env.POLISH_AGENT = agent
+    var ct = customByKey(s), arg = s
+    if (ct) { arg = "custom"; env.POLISH_TONE_NAME = ct.label; env.POLISH_TONE_PROMPT = ct.prompt; env.POLISH_TONE_SAMPLES = ct.samples || "" }
     var j = jobComp.createObject(root, { versionId: v.id, environment: env,
-      command: [dir + "/rewrite.sh", s, inputPath] })
+      command: [dir + "/rewrite.sh", arg, inputPath] })
     j.running = true
   }
 
@@ -738,7 +829,9 @@ ShellRoot {
 
   Timer { id: copiedTimer; interval: 1400; onTriggered: root.copied = false }
 
-  Component.onCompleted: agentList.running = true
+  // Start only once settings are loaded, so nothing runs (or saves) on defaults.
+  Component.onCompleted: if (settingsReady) agentList.running = true
+  onSettingsReadyChanged: if (settingsReady && !agentList.running && agents.length === 0) agentList.running = true
 
   // ---- UI components ------------------------------------------------------
   // Small keycap badge on a control's top-right corner, shown while Alt is held.
@@ -978,6 +1071,7 @@ ShellRoot {
       id: fl
       anchors.fill: parent
       contentWidth: tsRow.implicitWidth
+      onContentWidthChanged: Qt.callLater(ts.ensureVisible)   // chips laid out (or a tone added)
       contentHeight: height
       flickableDirection: Flickable.HorizontalFlick
       boundsBehavior: Flickable.StopAtBounds
@@ -1062,7 +1156,9 @@ ShellRoot {
     Rectangle {
       id: card
       width: Math.min(600, parent.width - 32)
-      height: (root.view === "main" ? col.implicitHeight : root.view === "adjust" ? adjustCol.implicitHeight : settingsCol.implicitHeight) + 40
+      // Settings can outgrow the screen; it scrolls inside the card instead.
+      height: Math.min((root.view === "main" ? col.implicitHeight : root.view === "adjust" ? adjustCol.implicitHeight : root.view === "tone" ? toneCol.implicitHeight : settingsCol.implicitHeight) + 40,
+                       parent.height - 48)
       anchors.centerIn: parent
       radius: 22
       color: root.bg
@@ -1079,12 +1175,12 @@ ShellRoot {
       // Alt press/release bubbles up here from whichever control has focus.
       Keys.onPressed: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altDown() }
       Keys.onReleased: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altUp() }
-      readonly property bool typing: editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus || refineField.activeFocus
-      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : root.refineOpen ? root.closeRefine() : Qt.quit() }
+      readonly property bool typing: toneName.activeFocus || tonePrompt.activeFocus || toneSamples.activeFocus || editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus || refineField.activeFocus
+      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : root.view === "tone" ? root.view = "settings" : root.refineOpen ? root.closeRefine() : Qt.quit() }
       Shortcut { sequence: "/"; enabled: root.view === "main" && !card.typing; onActivated: root.openRefine() }
       Shortcut { sequence: "Alt+D"; enabled: root.view === "main"; onActivated: root.toggleDiff() }
       Shortcut { sequences: ["Ctrl+,", "Alt+S"]; onActivated: root.openSettings() }
-      Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; onActivated: root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.mode === "rewrite" && root.editable ? root.apply("replace") : root.copy()) }
+      Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: root.view !== "settings"; onActivated: root.view === "tone" ? root.saveToneEditor() : root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.mode === "rewrite" && root.editable ? root.apply("replace") : root.copy()) }
       Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.view === "main" && root.mode !== "read" && (root.editable || root.mode === "reply"); onActivated: root.apply(root.mode === "reply" ? "paste" : "insert") }
       Shortcut { sequence: "Alt+M"; enabled: root.view === "main"; onActivated: root.cycleMode() }
       Shortcut { sequence: "Ctrl+R"; enabled: root.view === "main"; onActivated: root.regenerate(false) }
@@ -1094,14 +1190,14 @@ ShellRoot {
       Shortcut { sequence: "Right"; enabled: root.view === "main" && !card.typing; onActivated: root.go(1) }
       Shortcut { sequence: "Alt+Left"; enabled: root.view === "main"; onActivated: root.go(-1) }
       Shortcut { sequence: "Alt+Right"; enabled: root.view === "main"; onActivated: root.go(1) }
-      Shortcut { sequence: "Alt+1"; onActivated: root.toneByIndex(0) }
-      Shortcut { sequence: "Alt+2"; onActivated: root.toneByIndex(1) }
-      Shortcut { sequence: "Alt+3"; onActivated: root.toneByIndex(2) }
-      Shortcut { sequence: "Alt+4"; onActivated: root.toneByIndex(3) }
-      Shortcut { sequence: "Alt+5"; onActivated: root.toneByIndex(4) }
-      Shortcut { sequence: "Alt+6"; onActivated: root.toneByIndex(5) }
-      Shortcut { sequence: "Alt+7"; onActivated: root.toneByIndex(6) }
-      Shortcut { sequence: "Alt+8"; onActivated: root.toneByIndex(7) }
+      Shortcut { sequence: "Alt+1"; enabled: root.view === "main" || root.view === "adjust"; onActivated: root.toneByIndex(0) }
+      Shortcut { sequence: "Alt+2"; enabled: root.view === "main" || root.view === "adjust"; onActivated: root.toneByIndex(1) }
+      Shortcut { sequence: "Alt+3"; enabled: root.view === "main" || root.view === "adjust"; onActivated: root.toneByIndex(2) }
+      Shortcut { sequence: "Alt+4"; enabled: root.view === "main" || root.view === "adjust"; onActivated: root.toneByIndex(3) }
+      Shortcut { sequence: "Alt+5"; enabled: root.view === "main" || root.view === "adjust"; onActivated: root.toneByIndex(4) }
+      Shortcut { sequence: "Alt+6"; enabled: root.view === "main" || root.view === "adjust"; onActivated: root.toneByIndex(5) }
+      Shortcut { sequence: "Alt+7"; enabled: root.view === "main" || root.view === "adjust"; onActivated: root.toneByIndex(6) }
+      Shortcut { sequence: "Alt+8"; enabled: root.view === "main" || root.view === "adjust"; onActivated: root.toneByIndex(7) }
       Shortcut { sequence: "Alt+A"; onActivated: root.cycleAgent() }
       Shortcut { sequence: "Alt+O"; enabled: root.view === "main"; onActivated: root.toggleOriginal() }
       Shortcut { sequence: "Alt+J"; enabled: root.view === "main"; onActivated: root.openAdjust() }
@@ -1729,10 +1825,25 @@ ShellRoot {
       }
 
       // ================= settings view =================
+      Flickable {
+        id: settingsFlick
+        visible: root.view === "settings"
+        anchors { fill: parent; margins: 20 }
+        contentHeight: settingsCol.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+        // Wheel/touchpad only: a drag here belongs to the chip reordering.
+        interactive: false
+        WheelHandler {
+          onWheel: (e) => {
+            var d = e.pixelDelta.y !== 0 ? e.pixelDelta.y : e.angleDelta.y / 2
+            settingsFlick.contentY = Math.max(0, Math.min(settingsFlick.contentHeight - settingsFlick.height, settingsFlick.contentY - d))
+          }
+        }
+        ScrollBar.vertical: ScrollBar { policy: settingsFlick.contentHeight > settingsFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff }
       ColumnLayout {
         id: settingsCol
-        visible: root.view === "settings"
-        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 }
+        width: settingsFlick.width - (settingsFlick.contentHeight > settingsFlick.height ? 10 : 0)
         spacing: 14
 
         Item {
@@ -1852,6 +1963,42 @@ ShellRoot {
           }
         }
 
+        SectionLabel { Layout.topMargin: 6; label: "Custom tones"; value: root.customTones().length ? root.customTones().length + " of " + root.maxCustomTones : "" }
+        Repeater {
+          model: root.customTones()
+          Rectangle {
+            required property var modelData
+            Layout.fillWidth: true
+            implicitHeight: ctCol.implicitHeight + 20
+            radius: 16
+            color: ctMouse.containsMouse ? root.surface2 : root.surface
+            ColumnLayout {
+              id: ctCol
+              anchors { left: parent.left; right: ctEdit.left; verticalCenter: parent.verticalCenter; leftMargin: 16; rightMargin: 10 }
+              spacing: 2
+              Text { text: modelData.label; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 14 }
+              Text {
+                Layout.fillWidth: true
+                text: modelData.prompt + (modelData.samples ? "  \u00b7 with your writing samples" : "")
+                textFormat: Text.PlainText; elide: Text.ElideRight; maximumLineCount: 1
+                color: root.dim; font.family: root.font; font.pixelSize: 11
+              }
+            }
+            Text {
+              id: ctEdit
+              anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+              text: "\u{F03EB}"; textFormat: Text.PlainText; color: root.dim; font.family: root.font; font.pixelSize: 15
+            }
+            MouseArea { id: ctMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openToneEditor(modelData.key) }
+          }
+        }
+        Chip {
+          visible: root.customTones().length < root.maxCustomTones
+          label: "New tone"
+          glyph: "\u{F0415}"
+          onClicked: root.openToneEditor("")
+        }
+
         SectionLabel { Layout.topMargin: 6; label: "Features"; value: "" }
         Toggle {
           label: "Show changes"
@@ -1880,6 +2027,138 @@ ShellRoot {
           text: "Saved automatically \u00b7 Esc to go back"
           textFormat: Text.PlainText
           color: root.dim; font.family: root.font; font.pixelSize: 11
+        }
+      }
+
+      }   // settingsFlick
+
+      // ================= tone editor view =================
+      ColumnLayout {
+        id: toneCol
+        visible: root.view === "tone"
+        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 }
+        spacing: 12
+
+        Item {
+          Layout.fillWidth: true
+          implicitHeight: 38
+          Text {
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+            text: "Cancel"
+            textFormat: Text.PlainText
+            color: tcMouse.containsMouse ? root.fg : root.dim
+            font.family: root.font; font.pixelSize: 15
+            MouseArea { id: tcMouse; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.view = "settings" }
+          }
+          Text {
+            anchors.centerIn: parent
+            text: root.editKey ? "Edit tone" : "New tone"
+            textFormat: Text.PlainText
+            color: root.fg
+            font.family: root.font; font.pixelSize: 20; font.weight: Font.DemiBold
+          }
+          Text {
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            readonly property bool ok: toneName.text.trim() !== "" && tonePrompt.text.trim() !== ""
+            text: "Save"
+            textFormat: Text.PlainText
+            color: ok ? (tsMouse.containsMouse ? root.fg : root.accent) : root.faint
+            font.family: root.font; font.pixelSize: 15; font.weight: Font.DemiBold
+            MouseArea { id: tsMouse; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.saveToneEditor() }
+          }
+        }
+
+        // Starter templates (fill in the fields; edit freely)
+        Flow {
+          visible: !root.editKey
+          Layout.fillWidth: true
+          spacing: 8
+          Repeater {
+            model: root.toneTemplates
+            Chip { required property var modelData; label: modelData.label; onClicked: root.applyTemplate(modelData) }
+          }
+        }
+
+        SectionLabel { label: "Name"; value: toneName.text.length + " / 20" }
+        Rectangle {
+          Layout.fillWidth: true
+          implicitHeight: 44
+          radius: 22
+          color: root.surface
+          border.width: toneName.activeFocus ? 1 : 0
+          border.color: root.accent
+          TextField {
+            id: toneName
+            anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
+            maximumLength: 20
+            placeholderText: "Chip label, e.g. Client update"
+            placeholderTextColor: root.faint
+            color: root.fg; selectionColor: root.surface2
+            font.family: root.font; font.pixelSize: 14
+            background: null
+          }
+        }
+
+        SectionLabel { label: "How should it sound?"; value: "" }
+        Rectangle {
+          Layout.fillWidth: true
+          implicitHeight: 100
+          radius: 18
+          color: root.surface
+          border.width: tonePrompt.activeFocus ? 1 : 0
+          border.color: root.accent
+          ScrollView {
+            anchors.fill: parent; anchors.margins: 10; clip: true
+            TextArea {
+              id: tonePrompt
+              placeholderText: "Describe the tone: who it's for, length, formality, emoji, things to always or never do"
+              placeholderTextColor: root.faint
+              textFormat: TextEdit.PlainText; wrapMode: TextEdit.Wrap; selectByMouse: true
+              color: root.fg; selectionColor: root.surface2
+              font.family: root.font; font.pixelSize: 14
+              background: null
+            }
+          }
+        }
+
+        SectionLabel { label: "Sounds like me (optional)"; value: "" }
+        Rectangle {
+          Layout.fillWidth: true
+          implicitHeight: 100
+          radius: 18
+          color: root.surface
+          border.width: toneSamples.activeFocus ? 1 : 0
+          border.color: root.accent
+          ScrollView {
+            anchors.fill: parent; anchors.margins: 10; clip: true
+            TextArea {
+              id: toneSamples
+              placeholderText: "Paste 3\u201310 messages you wrote yourself. The tone copies your word choice, rhythm and emoji habits, never the content."
+              placeholderTextColor: root.faint
+              textFormat: TextEdit.PlainText; wrapMode: TextEdit.Wrap; selectByMouse: true
+              color: root.fg; selectionColor: root.surface2
+              font.family: root.font; font.pixelSize: 13
+              background: null
+            }
+          }
+        }
+
+        RowLayout {
+          Layout.fillWidth: true
+          Text {
+            visible: root.editKey !== ""
+            text: "Delete tone"
+            textFormat: Text.PlainText
+            color: tdMouse.containsMouse ? root.danger : Qt.alpha(root.danger, 0.75)
+            font.family: root.font; font.pixelSize: 13
+            MouseArea { id: tdMouse; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.deleteToneEditor() }
+          }
+          Item { Layout.fillWidth: true }
+          Text {
+            text: "Works in Rewrite and Reply \u00b7 saved in your settings"
+            textFormat: Text.PlainText
+            color: root.dim; font.family: root.font; font.pixelSize: 11
+          }
         }
       }
 

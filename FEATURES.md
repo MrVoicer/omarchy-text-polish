@@ -95,6 +95,17 @@ For articles, threads, docs and jargon:
 
 ## Make it yours
 
+### Custom tones, including your own voice
+Make your own tones in Settings: a name, a description of how it should sound,
+and optionally a few messages you wrote yourself.
+- **Sounds like me:** paste 3–10 of your own messages and Polish rewrites in
+  *your* voice: your word choice, rhythm, capitalization and emoji habits
+  (never your content).
+- **Starter templates:** Sounds like me, LinkedIn post, Client update, Family
+  chat, ready to tweak.
+- Up to 8, and they work everywhere built-in tones do: the chip row, your order,
+  Alt+number shortcuts, pins, Reply mode and Prepare next tone.
+
 ### Refine: one-off changes in one keystroke
 Press **/**, type "address it to Priya" or "focus on the deadlines", press
 Enter. Polish makes a new version of what's on screen with that change, keeping
@@ -254,7 +265,6 @@ Shift+↻ starts over from the original.
 
 ## On the roadmap (ideas, not promises)
 
-- Custom tones you define yourself, including a "sounds like me" voice.
 - Translate as a Read action.
 - Dictation cleanup after voice typing.
 - History across sessions and one-key undo of Replace.

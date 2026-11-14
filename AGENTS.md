@@ -64,6 +64,12 @@ source window and paste). Browser: `browser-extension/` →
 - **Hyprland (Lua config):** dispatch as `hl.dsp.focus({ window =
   "address:…" })`; `focuswindow` errors. Validate with
   `hyprctl reload && hyprctl configerrors`.
+- **Settings load order:** the settings `FileView` may report `onLoaded` *after*
+  the root's `Component.onCompleted`. Anything computed before then uses
+  defaults, and saving it overwrites the user's file (this once wiped custom
+  tones, pins and order). So the popup starts the agent only once
+  `settingsReady` is true, and `updateSettings()` holds early writes. Keep all
+  setting changes going through `updateSettings`/`setSetting`.
 - **Testing the popup:**
   - `pkill -f "shell.q[m]l"` in its *own* command; if the same command line
     contains "shell.qml" it kills your shell (exit 144).
@@ -76,6 +82,11 @@ source window and paste). Browser: `browser-extension/` →
   - `grim -g` and cursor coordinates are logical; on a 1.25-scaled screen
     divide screenshot pixels by 1.25.
   - Log: `$XDG_RUNTIME_DIR/text-polish/popup.log`.
+  - Anything that writes settings: back up `settings.json` first, or run with
+    `XDG_STATE_HOME=<scratch dir>` so the user's real file is never touched.
+  - To test a screen you can't click to (e.g. the tone editor), copy
+    `shell.qml` to a scratch dir with a call injected after `root.agents = list`
+    and run `quickshell -p` on the copy with the `POLISH_*` env set.
 - **Claude thinking:** `claude -p` ignores `MAX_THINKING_TOKENS`; use
   `--effort low|medium|high`. Without thinking, Sonnet "corrects itself" mid
   answer on arithmetic (unit/currency conversions); Read mode uses

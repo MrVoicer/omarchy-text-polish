@@ -121,6 +121,15 @@ The gear in the header (Alt+S or Ctrl+,) opens Settings:
   work from the browser menu and `apps.conf`.
 - **Show changes**, **Open Proofread on changes**, **Prepare next tone**.
 
+## Custom tones
+Settings → **Custom tones** → **New tone**: give it a name (the chip label),
+describe how it should sound, and optionally paste 3–10 messages you wrote
+under **Sounds like me** so it copies your voice. Starter templates: Sounds like
+me, LinkedIn post, Client update, Family chat. Up to 8; they behave like the
+built-in tones (chip row, order, show/hide, Alt+number, pins, Reply mode,
+prefetch). Ctrl+Enter saves. Stored in `settings.json` as `customTones`; the
+browser menu lists only the built-in tones.
+
 ## Shortcut hints
 Hold Alt for about a third of a second and small keycaps appear on each
 control: 1–8 on the tone chips, A agent, M Rewrite/Reply, S settings,
