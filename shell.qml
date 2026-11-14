@@ -25,7 +25,9 @@ ShellRoot {
     { key: "casual", label: "Casual" },
     { key: "punchy", label: "Punchy" },
     { key: "concise", label: "Concise" },
+    { key: "detailed", label: "Detailed" },
     { key: "formal", label: "Formal" },
+    { key: "witty", label: "Witty" },
     { key: "tweet", label: "Tweet" }
   ]
   function styleLabel(k) {
@@ -217,6 +219,12 @@ ShellRoot {
     generate(s, {})
   }
 
+  function toneByIndex(i) {
+    if (i >= styles.length) return
+    var k = styles[i].key
+    if (view === "adjust") switchAdjustTone(k); else pick(k)
+  }
+
   function regenerate() {
     var c = current
     generate(c ? c.style : style, c ? { length: c.length, emoji: c.emoji, note: c.note } : {})
@@ -404,6 +412,83 @@ ShellRoot {
     Text { text: parent.value; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 14 }
   }
 
+  // One horizontally scrolling row of tone chips (wheel or drag), with edge
+  // fades when more chips are off-screen; the active chip scrolls into view.
+  component ToneScroller: Item {
+    id: ts
+    property string activeKey
+    signal chosen(string key)
+    Layout.fillWidth: true
+    implicitHeight: 38
+    clip: true
+    readonly property real maxX: Math.max(0, fl.contentWidth - fl.width)
+    Flickable {
+      id: fl
+      anchors.fill: parent
+      contentWidth: tsRow.implicitWidth
+      contentHeight: height
+      flickableDirection: Flickable.HorizontalFlick
+      boundsBehavior: Flickable.StopAtBounds
+      Row {
+        id: tsRow
+        spacing: 8
+        Repeater {
+          id: tsRep
+          model: root.styles
+          Chip {
+            required property var modelData
+            label: modelData.label
+            active: ts.activeKey === modelData.key
+            onClicked: ts.chosen(modelData.key)
+          }
+        }
+      }
+    }
+    WheelHandler {
+      onWheel: (e) => {
+        var d = e.angleDelta.y !== 0 ? e.angleDelta.y : e.angleDelta.x
+        scrollAnim.stop()
+        fl.contentX = Math.max(0, Math.min(ts.maxX, fl.contentX - d))
+      }
+    }
+    NumberAnimation { id: scrollAnim; target: fl; property: "contentX"; duration: 180; easing.type: Easing.OutCubic }
+    function ensureVisible() {
+      for (var i = 0; i < root.styles.length; i++) {
+        if (root.styles[i].key !== activeKey) continue
+        var it = tsRep.itemAt(i)
+        if (!it) return
+        var x = fl.contentX
+        if (it.x < fl.contentX + 24) x = it.x - 24
+        else if (it.x + it.width > fl.contentX + fl.width - 24) x = it.x + it.width - fl.width + 24
+        x = Math.max(0, Math.min(maxX, x))
+        if (x !== fl.contentX) { scrollAnim.to = x; scrollAnim.restart() }
+        return
+      }
+    }
+    onActiveKeyChanged: Qt.callLater(ensureVisible)
+    onWidthChanged: Qt.callLater(ensureVisible)
+    Rectangle {
+      anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+      width: 28
+      visible: fl.contentX > 1
+      gradient: Gradient {
+        orientation: Gradient.Horizontal
+        GradientStop { position: 0; color: root.bg }
+        GradientStop { position: 1; color: Qt.alpha(root.bg, 0) }
+      }
+    }
+    Rectangle {
+      anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+      width: 28
+      visible: fl.contentX < ts.maxX - 1
+      gradient: Gradient {
+        orientation: Gradient.Horizontal
+        GradientStop { position: 0; color: Qt.alpha(root.bg, 0) }
+        GradientStop { position: 1; color: root.bg }
+      }
+    }
+  }
+
   // ---- window -------------------------------------------------------------
   PanelWindow {
     id: win
@@ -453,12 +538,14 @@ ShellRoot {
       Shortcut { sequence: "Right"; enabled: root.view === "main" && !card.typing; onActivated: root.go(1) }
       Shortcut { sequence: "Alt+Left"; enabled: root.view === "main"; onActivated: root.go(-1) }
       Shortcut { sequence: "Alt+Right"; enabled: root.view === "main"; onActivated: root.go(1) }
-      Shortcut { sequence: "Alt+1"; onActivated: root.view === "adjust" ? root.switchAdjustTone("proofread") : root.pick("proofread") }
-      Shortcut { sequence: "Alt+2"; onActivated: root.view === "adjust" ? root.switchAdjustTone("casual") : root.pick("casual") }
-      Shortcut { sequence: "Alt+3"; onActivated: root.view === "adjust" ? root.switchAdjustTone("punchy") : root.pick("punchy") }
-      Shortcut { sequence: "Alt+4"; onActivated: root.view === "adjust" ? root.switchAdjustTone("concise") : root.pick("concise") }
-      Shortcut { sequence: "Alt+5"; onActivated: root.view === "adjust" ? root.switchAdjustTone("formal") : root.pick("formal") }
-      Shortcut { sequence: "Alt+6"; onActivated: root.view === "adjust" ? root.switchAdjustTone("tweet") : root.pick("tweet") }
+      Shortcut { sequence: "Alt+1"; onActivated: root.toneByIndex(0) }
+      Shortcut { sequence: "Alt+2"; onActivated: root.toneByIndex(1) }
+      Shortcut { sequence: "Alt+3"; onActivated: root.toneByIndex(2) }
+      Shortcut { sequence: "Alt+4"; onActivated: root.toneByIndex(3) }
+      Shortcut { sequence: "Alt+5"; onActivated: root.toneByIndex(4) }
+      Shortcut { sequence: "Alt+6"; onActivated: root.toneByIndex(5) }
+      Shortcut { sequence: "Alt+7"; onActivated: root.toneByIndex(6) }
+      Shortcut { sequence: "Alt+8"; onActivated: root.toneByIndex(7) }
       Shortcut { sequence: "Alt+A"; onActivated: root.cycleAgent() }
       Shortcut { sequence: "Alt+O"; enabled: root.view === "main"; onActivated: root.showOriginal = !root.showOriginal }
       Shortcut { sequence: "Alt+J"; enabled: root.view === "main"; onActivated: root.openAdjust() }
@@ -661,21 +748,13 @@ ShellRoot {
           }
         }
 
-        // Adjust + tone chips
-        Flow {
+        // Adjust (pinned) + one scrolling row of tones
+        RowLayout {
           Layout.fillWidth: true
           spacing: 8
           Chip { label: "Adjust"; glyph: "\u{F062E}"; onClicked: root.openAdjust() }
-          Rectangle { width: 1; height: 38; color: root.faint }
-          Repeater {
-            model: root.styles
-            Chip {
-              required property var modelData
-              label: modelData.label
-              active: root.style === modelData.key
-              onClicked: root.pick(modelData.key)
-            }
-          }
+          Rectangle { implicitWidth: 1; implicitHeight: 26; color: root.faint }
+          ToneScroller { activeKey: root.style; onChosen: (k) => root.pick(k) }
         }
 
         // Actions
@@ -695,24 +774,48 @@ ShellRoot {
           }
         }
 
-        Text {
+        RowLayout {
           Layout.fillWidth: true
-          horizontalAlignment: Text.AlignHCenter
-          text: {
-            var v = root.current
-            var head = !v ? "Starting…"
-                     : v.busy ? "Generating with " + v.agentLabel
-                     : (v.ok ? "Generated by " : "Failed with ") + v.agentLabel + " in " + root.fmtSecs(v.ms)
-            if (v) head += " · " + root.versionTags(v)
-            return head + "\nEsc close · Ctrl+Enter " + (root.editable ? "replace" : "copy")
-                 + " · ←/→ versions · Alt+1–6 tone · Alt+J adjust · Alt+A agent · Alt+O original"
+          spacing: 8
+          Text {
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
+            text: {
+              var v = root.current
+              var head = !v ? "Starting\u2026"
+                       : v.busy ? "Generating with " + v.agentLabel
+                       : (v.ok ? "Generated by " : "Failed with ") + v.agentLabel + " in " + root.fmtSecs(v.ms)
+              return v ? head + " \u00b7 " + root.versionTags(v) : head
+            }
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            color: root.dim
+            font.family: root.font
+            font.pixelSize: 11
           }
-          textFormat: Text.PlainText
-          wrapMode: Text.Wrap
-          color: root.dim
-          font.family: root.font
-          font.pixelSize: 11
-          lineHeight: 1.2
+          Text {
+            text: "\u{F02D7}"
+            textFormat: Text.PlainText
+            color: keysHover.hovered ? root.fg : root.faint
+            font.family: root.font
+            font.pixelSize: 14
+            HoverHandler { id: keysHover }
+            ToolTip {
+              visible: keysHover.hovered
+              delay: 150
+              contentItem: Text {
+                text: "Esc close \u00b7 Ctrl+Enter " + (root.editable ? "replace" : "copy") + " \u00b7 Ctrl+Shift+Enter insert\n"
+                    + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate \u00b7 Alt+1\u20138 tone\n"
+                    + "Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original"
+                textFormat: Text.PlainText
+                color: root.fg
+                font.family: root.font
+                font.pixelSize: 12
+                lineHeight: 1.3
+              }
+              background: Rectangle { color: root.surface; radius: 10; border.width: 1; border.color: root.faint }
+            }
+          }
         }
       }
 
@@ -744,19 +847,7 @@ ShellRoot {
         }
 
         SectionLabel { label: "Tone"; value: "" }
-        Flow {
-          Layout.fillWidth: true
-          spacing: 8
-          Repeater {
-            model: root.styles
-            Chip {
-              required property var modelData
-              label: modelData.label
-              active: root.adjStyle === modelData.key
-              onClicked: root.switchAdjustTone(modelData.key)
-            }
-          }
-        }
+        ToneScroller { activeKey: root.adjStyle; onChosen: (k) => root.switchAdjustTone(k) }
 
         SectionLabel { Layout.topMargin: 6; label: "Length"; value: root.lengthStops[root.adjLength] + (root.adjLength === 1 ? " (tone default)" : "") }
         StepSlider { stops: root.lengthStops; value: root.adjLength; glyph: "T"; onMoved: (v) => root.adjLength = v }
@@ -802,7 +893,7 @@ ShellRoot {
         Text {
           Layout.fillWidth: true
           horizontalAlignment: Text.AlignHCenter
-          text: "Adds a new version · settings are remembered per tone · Ctrl+Enter generate · Esc back"
+          text: "Adds a new version · settings are remembered per tone"
           textFormat: Text.PlainText
           wrapMode: Text.Wrap
           color: root.dim

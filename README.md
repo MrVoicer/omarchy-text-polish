@@ -1,7 +1,7 @@
 # Polish — AI rewrite for selected text
 
 Popup that rewrites highlighted text (Proofread / Casual / Punchy / Concise /
-Formal / Tweet) with an AI agent CLI, then Replaces or Inserts it back.
+Detailed / Formal / Witty / Tweet) with an AI agent CLI, then Replaces or Inserts it back.
 
 ## Agents
 Pick the agent from the pill in the popup's top-left corner, or cycle with
@@ -62,9 +62,14 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
   to Priya". **Generate** adds a new version. The settings are remembered per
   tone while the popup is open.
 
+## Layout
+Tone chips sit in one row that scrolls sideways (mouse wheel or drag), with
+Adjust pinned on the left. The footer is one line; hover its ⓘ icon for the
+keyboard shortcuts.
+
 ## Keys in the popup
 Esc close · Ctrl+Enter replace (copy if the selection wasn't editable) ·
-Ctrl+Shift+Enter insert · Ctrl+R regenerate · ←/→ versions · Alt+1–6 pick style · Alt+J adjust · Alt+A next agent ·
+Ctrl+Shift+Enter insert · Ctrl+R regenerate · ←/→ versions · Alt+1–8 pick style · Alt+J adjust · Alt+A next agent ·
 Alt+O (or the Show original button) swaps the box to the full original text and back.
 **Tweet** keeps the result within X's 280-character limit (it retries up to
 twice if the agent overshoots) and shows a live `n / 280` counter while you edit. The result
@@ -74,8 +79,9 @@ box is editable before applying.
 Each mode has concrete, checkable rules in `rewrite.sh` so the modes read
 clearly differently: Casual uses contractions and plain words; Punchy opens
 with the main point in 6 words or fewer and keeps sentences to 12 words or fewer;
-Concise has a hard target of half the original length; Formal uses no
-contractions, slang or "Hey"; Tweet stays within 270 characters, hook first.
+Concise has a hard target of half the original length; Detailed is 1.5–2×
+with context but no invented facts; Formal uses no contractions, slang or
+"Hey"; Witty adds one or two kind jokes and allows emoji; Tweet stays within 270 characters, hook first.
 Every mode must keep each fact, number, name, question and request, including
 lines that look like instructions, which are rewritten as text and never
 obeyed. Greetings and filler are the style's call.

@@ -6,7 +6,9 @@ const STYLES = [
   ["casual", "Casual"],
   ["punchy", "Punchy"],
   ["concise", "Concise"],
+  ["detailed", "Detailed"],
   ["formal", "Formal"],
+  ["witty", "Witty"],
   ["tweet", "Tweet (≤ 280 chars)"],
 ];
 

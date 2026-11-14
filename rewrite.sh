@@ -39,6 +39,16 @@ case "$style" in
 - Hard target: at most $half characters (the original is $len).
 - Remove greetings, filler, hedges and repeated ideas; merge sentences; prefer short words and numerals.
 - Keep the original tone, just compressed." ;;
+  detailed)  task="STYLE: DETAILED. A fuller, clearer and more complete version.
+- About 1.5 to 2 times the original length.
+- Add context, reasons and smooth transitions; spell out what is clearly implied (what happened, why it matters, what is being asked).
+- Organized and easy to follow; keep the original tone.
+- Never invent new facts, names, numbers, dates or commitments." ;;
+  witty)     task="STYLE: WITTY. Playful and clever, like a friend with a good sense of humor.
+- Use light humor: a fun metaphor, wordplay or a cheeky aside (one or two jokes, not every line).
+- Upbeat and kind; never mean, sarcastic about people, or crude.
+- A few fitting emoji are welcome.
+- Every fact must stay accurate and the actual ask must stay clear. At most about 1.3 times the original length." ;;
   tweet)     task="STYLE: TWEET. A single post for X/Twitter.
 - At most 270 characters in total (count every character, including spaces and emoji).
 - Hook first: lead with the most interesting point. Energetic, scannable.

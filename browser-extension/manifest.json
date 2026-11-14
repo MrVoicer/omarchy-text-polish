@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Polish — AI rewrite",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Right-click selected text to proofread or rewrite it with your Omarchy default AI agent.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApHPA/pqMkWk3Z3I9STM3yY06mjz0468dcDo0pPv/iGalnVExGU4ZWMwbuK/iofY9xWKKo1Y8ccGCrv8WrETydyVPwJkn1sthdnnq/IC2JktJc9sEvNgy4hQnGvNL7iud9pCgZjEp4zQgBaDvYWB574gJ47Wv/N+Aa8WO8lJ6pNPKaIcAm99OGBVVr65TXlyzxi4ZhMdjdWzEBmn3I/BeJjBfGS/o/HkcL87f8QPIbKUtv/tA9d1oOIw5v7whsumRpW3cgYx8NeWgBIKU8SzJmJl5TFlUhT0OVsbnkn5rz1yCoyWqPZuG6CBiCnnoGSVWEMOIuSrIva8UF1oPE37irQIDAQAB",
   "permissions": ["contextMenus", "nativeMessaging", "scripting", "activeTab"],
