@@ -99,8 +99,12 @@ With Claude, text appears as it is written (`stream-json` deltas through
 the whole result. Other agents return all at once.
 
 ## Undo
-After Replace, Insert or Paste, a notification offers **Undo** for 10 seconds;
-**SUPER + ALT + Z** (`polish --undo`) works for 10 minutes. It refocuses that
+After Replace, Insert or Paste, Polish's own toast (`toast.qml`, bottom of the
+screen; shows even with Do Not Disturb on, takes no keyboard focus) offers
+**Undo** for 10 seconds (paused while hovered); **SUPER + ALT + Z**
+(`polish --undo`) works for 10 minutes. Each Replace undoes once: a second press
+says "Already undone" rather than sending another Ctrl+Z. Attempts are logged to
+`$XDG_RUNTIME_DIR/text-polish/undo.log`. It refocuses that
 window and sends the app's own undo (Ctrl+Z), so the original comes back
 exactly; Insert is a single paste so one undo removes it. Undo right away: if
 you've typed more, Ctrl+Z undoes your typing first. Terminals have no undo, so

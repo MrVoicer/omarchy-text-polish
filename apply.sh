@@ -3,7 +3,7 @@
 #   replace: paste over the selection.  insert: paste right after it.
 #   paste:   paste at the cursor (Reply mode), without touching any selection.
 # Puts TEXT on the clipboard, refocuses the window the selection came from and
-# pastes. Then offers Undo for 10 minutes: a notification button, or
+# pastes. Then offers Undo for 10 minutes: the toast's button (toast.qml), or
 # `apply.sh undo` (polish --undo, SUPER+ALT+Z), which refocuses the window and
 # sends the app's own undo (Ctrl+Z). Terminals have no undo (Ctrl+Z would
 # suspend the program), so there Undo copies the original back to the clipboard.
@@ -26,12 +26,18 @@ focus() {   # focus WINDOW_ADDRESS; fails if that window is gone
   sleep 0.08
 }
 note() { notify-send -a Polish -t 4000 "Polish" "$1"; }
+log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$run/undo.log"; }
+close_toast() { pkill -f "quickshell -p $here/toast.qml" 2>/dev/null; }
 
 if [[ ${1:-} == undo ]]; then
-  if [[ ! -s $state ]]; then note "Nothing to undo."; exit 0; fi
-  IFS=$'\t' read -r t addr class how < <(jq -r '[.t, .addr, .class, .how] | @tsv' "$state")
+  close_toast
+  if [[ ! -s $state ]]; then log "undo: no state"; note "Nothing to undo."; exit 0; fi
+  IFS=$'\t' read -r t addr class how undone < <(jq -r '[.t, .addr, .class, .how, (.undone // false)] | @tsv' "$state")
   original=$(jq -r '.original' "$state")
-  rm -f "$state"   # one undo per apply
+  log "undo: how=$how class=$class age=$(( $(date +%s) - t ))s undone=$undone"
+  # One undo per apply: a second press must not undo something else in the app.
+  if [[ $undone == true ]]; then note "Already undone."; exit 0; fi
+  jq '.undone = true' "$state" >"$state.tmp" && mv "$state.tmp" "$state"
   if (( $(date +%s) - t > UNDO_SECS )); then note "Nothing to undo (it's been over 10 minutes)."; exit 0; fi
   if is_terminal "$class" || ! focus "$addr"; then
     if [[ $how == replace && -n $original ]]; then
@@ -65,9 +71,10 @@ fi
 # Remember it for Undo, and offer the button.
 jq -n --arg addr "$addr" --arg class "$class" --arg how "$mode" --arg original "$original" \
   '{t: (now|floor), addr: $addr, class: $class, how: $how, original: $original}' >"$state.tmp" && mv "$state.tmp" "$state"
+log "$mode: class=$class"
 case $mode in replace) verb=Replaced ;; insert) verb=Inserted ;; *) verb=Pasted ;; esac
-msg="$verb${label:+ ($label)}. Undo: click Undo, or Super+Alt+Z."
-setsid -f bash -c '
-  act=$(notify-send -a Polish -t 10000 -A undo=Undo "Polish" "$1")
-  [[ $act == undo ]] && exec "$2/apply.sh" undo
-' _ "$msg" "$here" >/dev/null 2>&1 </dev/null
+# Polish's own toast, not a desktop notification: it shows even with Do Not Disturb on.
+close_toast
+POLISH_TOAST_MSG="$verb${label:+ · $label}" POLISH_DIR=$here \
+POLISH_MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[]|select(.focused).name') \
+  setsid -f quickshell -p "$here/toast.qml" >"$run/toast.log" 2>&1 </dev/null

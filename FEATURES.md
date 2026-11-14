@@ -152,7 +152,8 @@ with **← / →** or the `‹ n / N ›` pager. Each version remembers its tone
 timing and your hand edits. **Original** shows your untouched text in place.
 
 ### Undo, one key
-Replaced the wrong thing? Click **Undo** on the notification, or press
+Replaced the wrong thing? Click **Undo** on the toast that appears (it shows
+even with Do Not Disturb on), or press
 **Super + Alt + Z** within 10 minutes, and your original text is back exactly
 (Polish uses the app's own undo). In terminals, it hands the original back on
 your clipboard.

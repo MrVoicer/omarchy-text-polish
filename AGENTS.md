@@ -81,7 +81,11 @@ source window and paste). Browser: `browser-extension/` →
     or by temporarily forcing the state in code (and reverting).
   - `grim -g` and cursor coordinates are logical; on a 1.25-scaled screen
     divide screenshot pixels by 1.25.
-  - Log: `$XDG_RUNTIME_DIR/text-polish/popup.log`.
+  - Log: `$XDG_RUNTIME_DIR/text-polish/popup.log`; undo: `undo.log` there.
+  - Hotkey paths can be tested without a keypress: `hyprctl dispatch
+    'hl.dsp.exec_cmd("...")'` runs a command exactly as a bind does.
+  - Undo/Replace: test in a throwaway Chromium `--app='data:text/html,<textarea>…'`
+    window with `--user-data-dir=<scratch>`, never in the user's browser.
   - Anything that writes settings: back up `settings.json` first, or run with
     `XDG_STATE_HOME=<scratch dir>` so the user's real file is never touched.
   - To test a screen you can't click to (e.g. the tone editor), copy
@@ -92,6 +96,9 @@ source window and paste). Browser: `browser-extension/` →
   answer on arithmetic (unit/currency conversions); Read mode uses
   `--effort high`. Thinking arrives as `thinking_delta` events, which
   `stream_filter.py` drops, so only the answer streams.
+- **Don't rely on desktop notifications for anything interactive.** Users run
+  Do Not Disturb (Omarchy: `omarchy-shell notifications isDnd`), which hides
+  them entirely. Undo uses Polish's own toast (`toast.qml`, no keyboard focus).
 - **Agents:** OpenCode hangs waiting for stdin EOF (`rewrite.sh` does
   `exec </dev/null`). Codex is fastest with `--ignore-user-config --ephemeral`
   and low reasoning effort.
