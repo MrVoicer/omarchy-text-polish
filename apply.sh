@@ -48,7 +48,18 @@ if [[ ${1:-} == undo ]]; then
     fi
     exit 0
   fi
-  wtype -M ctrl -k z -m ctrl
+  # Send Ctrl+Z through Hyprland to that window. With the SUPER+ALT+Z hotkey your
+  # Super and Alt are still held, and a typed Ctrl+Z would arrive as
+  # Super+Alt+Ctrl+Z (not undo); send_shortcut uses exactly the mods we give.
+  # It wants a keycode, so look up Z for the active layout (52 on US QWERTY).
+  layout=$(hyprctl devices -j 2>/dev/null | jq -r '[.keyboards[] | select(.main)][0].layout // "us"' | cut -d, -f1)
+  zcode=$(xkbcli how-to-type --layout "${layout:-us}" z 2>/dev/null | awk '$1 ~ /^[0-9]+$/ { print $1; exit }')
+  out=$(hyprctl dispatch "hl.dsp.send_shortcut({ mods = \"CTRL\", key = \"code:${zcode:-52}\", window = \"address:$addr\" })" 2>&1)
+  log "undo sent: layout=$layout zcode=${zcode:-52} -> $out"
+  if [[ $out != ok ]]; then
+    sleep 0.6   # fallback: give the hotkey's modifiers time to be released
+    wtype -M ctrl -k z -m ctrl
+  fi
   exit 0
 fi
 

@@ -96,6 +96,13 @@ source window and paste). Browser: `browser-extension/` →
   answer on arithmetic (unit/currency conversions); Read mode uses
   `--effort high`. Thinking arrives as `thinking_delta` events, which
   `stream_filter.py` drops, so only the answer streams.
+- **Keys sent from a hotkey inherit the held modifiers.** When SUPER+ALT+Z
+  runs `polish --undo`, Super and Alt are still down, so `wtype` Ctrl+Z arrives
+  as Super+Alt+Ctrl+Z and does nothing. Use Hyprland's
+  `hl.dsp.send_shortcut({ mods = "CTRL", key = "code:<n>", window = "address:…" })`,
+  which sends exact mods to one window. It needs a keycode (`key = "z"` gives
+  "key not found"): look it up with `xkbcli how-to-type --layout <l> z`. Test by
+  holding mods with `wtype -M logo -M alt -s 1500 -m alt -m logo &`.
 - **Don't rely on desktop notifications for anything interactive.** Users run
   Do Not Disturb (Omarchy: `omarchy-shell notifications isDnd`), which hides
   them entirely. Undo uses Polish's own toast (`toast.qml`, no keyboard focus).
