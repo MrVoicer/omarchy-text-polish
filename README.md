@@ -82,9 +82,11 @@ Adjust works here too (Length plus a request like "just the deadlines"; no
 emoji slider). The buttons are **Close** and **Copy**, and Copy keeps the popup
 open. `polish --mode read` opens straight into it. Read opens on the action
 you used last (saved as `lastRead` in `settings.json`); Brave's Read with AI
-submenu picks one explicitly. With Claude, Read runs at
-high effort (it thinks before answering, about 7s instead of 5) so figures and
-unit conversions come out right; set `POLISH_CLAUDE_EFFORT` to change it.
+submenu picks one explicitly. With Claude, Read thinks
+before answering so figures and unit conversions come out right: Explain at
+high effort, Summarize and Points at medium (about 4s even on long articles;
+high took 10–18s for the same result), Translate without. `POLISH_CLAUDE_EFFORT`
+overrides it.
 
 ## Tone by app (`apps.conf`)
 Without an explicit tone, Polish starts in the tone of the first rule whose

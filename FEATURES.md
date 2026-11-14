@@ -255,8 +255,9 @@ Shift+↻ starts over from the original.
   rules): Claude 8.7, OpenCode 8.5, Command Code 8.2, Codex 7.2.
 - **Tones are distinct:** pairwise similarity between tones' outputs dropped to
   0.38–0.58 after tuning (identical would be 1.0).
-- **Speed:** first words ~2 s (Claude, streaming); Codex ~5–6 s; Read with
-  thinking ~7 s.
+- **Speed:** first words ~2 s (Claude, streaming); Codex ~5–6 s; Summarize and
+  Points ~4 s even on long articles; Translate ~3 s; Explain (thinks hardest)
+  ~7–12 s.
 - **Accuracy:** with thinking on, currency/unit conversions came out clean in
   3 of 3 runs, versus garbled in 1–2 of 3 without.
 

@@ -205,11 +205,20 @@ errf="$work/agent-$style.err"
 run_agent() {  # $1 = system prompt, $2 = user prompt; sets out, rc
   case "$agent" in
     claude)
-      # Read mode thinks first (numbers, conversions, explanations); thinking isn't
-      # streamed as text, so only the final answer reaches the popup.
-      local effort=()
-      # (Translate skips it: faster, and translation doesn't need the reasoning.)
-      [[ $mode == read && $style != translate ]] && effort=(--effort "${POLISH_CLAUDE_EFFORT:-high}")
+      # Read mode thinks first (numbers, conversions); thinking isn't streamed as
+      # text, so only the final answer reaches the popup. Measured on a 1.5k-char
+      # article with a units pin: Summarize/Points high = 9.6s/18.4s, medium =
+      # 3.7s/4.3s with the same facts and conversions. Explain stays high (medium
+      # still garbled conversions 1 in 3). Translate needs no thinking.
+      local effort=() level=""
+      if [[ $mode == read ]]; then
+        case $style in
+          explain) level=high ;;
+          summarize|keypoints) level=medium ;;
+        esac
+      fi
+      level=${POLISH_CLAUDE_EFFORT:-$level}
+      [[ -n $level ]] && effort=(--effort "$level")
       local cmd=(timeout 90 claude -p --model "${POLISH_MODEL:-sonnet}" "${effort[@]}" \
         --tools "" --strict-mcp-config --setting-sources "" --no-session-persistence \
         --system-prompt "$1")
