@@ -75,6 +75,26 @@ With Claude, text appears as it is written (`stream-json` deltas through
 `stream_filter.py`). The first words show in about 2s instead of waiting for
 the whole result. Other agents return all at once.
 
+## Changes view
+**Changes** (Alt+D) shows a word-level diff of what the AI did to your text:
+removed words struck through in red, added words highlighted, plus a count
+("3 changes", or "No changes needed"). Proofread opens on it by default, so a
+proofread can be checked at a glance. Click the text to go back to editing.
+
+## Prepare next tone (optional)
+With **Prepare next tone** on, after each rewrite Polish quietly generates the
+next chip's tone in the background. It stays out of the pager until you pick
+that chip, then appears instantly and the one after it starts preparing. It
+costs one extra agent run per step, so it is **off by default**.
+
+## Settings
+The gear in the header (Alt+S or Ctrl+,) opens Settings:
+- **Tone chips**: choose which tones appear in the row (Alt+1–8 follow the
+  shown chips; hidden tones still work from the browser menu and `apps.conf`).
+- **Show changes**, **Open Proofread on changes**, **Prepare next tone**.
+
+Saved per user in `~/.local/state/text-polish/settings.json` (not in this repo).
+
 ## Versions and Adjust
 - Every rewrite is saved as a numbered version. Page through them with the
   `‹ n / N ›` pager or the **Left/Right** arrow keys. While the cursor is in the
@@ -101,6 +121,7 @@ keyboard shortcuts.
 ## Keys in the popup
 Esc close · Ctrl+Enter replace (copy if the selection wasn't editable) ·
 Ctrl+Shift+Enter insert · Ctrl+R regenerate · ←/→ versions · Alt+1–8 pick style · Alt+J adjust · Alt+M rewrite/reply · Alt+A next agent ·
+Alt+D changes · Alt+S settings ·
 Alt+O (or the Show original button) swaps the box to the full original text and back.
 **Tweet** keeps the result within X's 280-character limit (it retries up to
 twice if the agent overshoots) and shows a live `n / 280` counter while you edit. The result

@@ -30,6 +30,44 @@ ShellRoot {
     { key: "formal", label: "Formal" },
     { key: "witty", label: "Witty" }
   ]
+  // ---- settings (per user, outside the repo) ------------------------------
+  // tones: which chips show, in row order. showChanges: the Changes view (#4).
+  // autoChanges: Proofread opens on Changes. prefetch: prepare the next tone
+  // in the background so switching is instant (costs an extra agent run).
+  readonly property string settingsPath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/text-polish/settings.json"
+  readonly property var defaultSettings: ({ tones: styles.map(function(t) { return t.key }), showChanges: true, autoChanges: true, prefetch: false })
+  property var settings: defaultSettings
+  function setting(k) { return settings[k] !== undefined ? settings[k] : defaultSettings[k] }
+  function setSetting(k, val) {
+    var o = Object.assign({}, settings)
+    o[k] = val
+    settings = o
+    Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" > "$1.tmp" && mv "$1.tmp" "$1"',
+                             "sh", settingsPath, JSON.stringify(o, null, 2)])
+  }
+  FileView {
+    path: root.settingsPath
+    blockLoading: true
+    onLoaded: {
+      try {
+        var o = JSON.parse(text())
+        if (o && typeof o === "object") root.settings = Object.assign({}, root.defaultSettings, o)
+      } catch (e) {}
+    }
+  }
+  // Chips shown, in the canonical order (hidden tones still work from apps.conf/the browser menu).
+  readonly property var tones: {
+    var on = setting("tones")
+    var t = styles.filter(function(x) { return on.indexOf(x.key) >= 0 })
+    return t.length ? t : styles
+  }
+  function toggleTone(k) {
+    var on = setting("tones").slice()
+    var i = on.indexOf(k)
+    if (i >= 0) { if (on.length > 1) on.splice(i, 1) } else on.push(k)
+    setSetting("tones", on)
+  }
+
   // "rewrite": restyle the selection. "reply": draft a reply to the selected message.
   property string mode: Quickshell.env("POLISH_MODE_START") === "reply" ? "reply" : "rewrite"
   property string intent: ""                // Reply mode: what you want to say
@@ -60,6 +98,72 @@ ShellRoot {
   function fmtSecs(ms) { return (ms / 1000).toFixed(1) + "s" }
 
   property bool showOriginal: false
+  property bool showDiff: false             // Changes view: what the AI edited (#4)
+  readonly property bool diffAvailable: setting("showChanges") && !!current && !current.busy && current.ok && current.mode === "rewrite"
+  // Proofread opens on its changes (setting), unless you've edited it by hand.
+  function autoDiffFor(v) {
+    return !!v && setting("showChanges") && setting("autoChanges") && v.mode === "rewrite"
+           && v.style === "proofread" && !v.busy && v.ok && !v.edited
+  }
+  function toggleDiff() {
+    if (!diffAvailable) return
+    showOriginal = false
+    showDiff = !showDiff
+    if (!showDiff) blurText()
+  }
+
+  // Word-level diff of the text a version rewrote vs. its (possibly edited) result,
+  // as rich text: removed words struck through, added words highlighted.
+  function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") }
+  function diffHtml(a, b) {
+    var A = a.match(/\s+|[^\s]+/g) || [], B = b.match(/\s+|[^\s]+/g) || []
+    var pre = 0
+    while (pre < A.length && pre < B.length && A[pre] === B[pre]) pre++
+    var suf = 0
+    while (suf < A.length - pre && suf < B.length - pre && A[A.length - 1 - suf] === B[B.length - 1 - suf]) suf++
+    var a2 = A.slice(pre, A.length - suf), b2 = B.slice(pre, B.length - suf)
+    var n = a2.length, m = b2.length, ops = []
+    if (n * m > 4000000) {                   // too big to align word by word: one block each
+      if (n) ops.push(["-", a2.join("")])
+      if (m) ops.push(["+", b2.join("")])
+    } else {
+      // LCS table, then walk it forward.
+      var w = m + 1, L = new Int32Array((n + 1) * w)
+      for (var i = n - 1; i >= 0; i--)
+        for (var j = m - 1; j >= 0; j--)
+          L[i * w + j] = a2[i] === b2[j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1])
+      var x = 0, y = 0
+      while (x < n || y < m) {
+        if (x < n && y < m && a2[x] === b2[y]) { ops.push(["=", a2[x]]); x++; y++ }
+        else if (x < n && (y >= m || L[(x + 1) * w + y] >= L[x * w + y + 1])) { ops.push(["-", a2[x]]); x++ }
+        else { ops.push(["+", b2[y]]); y++ }
+      }
+    }
+    // Merge runs of the same kind; edits split only by whitespace count as one change.
+    var runs = []
+    ops.forEach(function(o) {
+      var last = runs[runs.length - 1]
+      if (last && last[0] === o[0]) last[1] += o[1]; else runs.push([o[0], o[1]])
+    })
+    var out = esc(A.slice(0, pre).join("")), count = 0, inChange = false
+    for (var r = 0; r < runs.length; r++) {
+      var k = runs[r][0], t = runs[r][1]
+      if (k === "=") {
+        if (!/^\s+$/.test(t)) inChange = false
+        out += esc(t)
+      } else {
+        if (!inChange) count++
+        inChange = true
+        if (k === "-") out += '<s><span style="color:' + rgba(danger, 1) + ';">' + esc(t) + '</span></s>'
+        else out += '<span style="color:' + rgba(accent, 1) + '; background-color:' + rgba(accent, 0.2) + ';">' + esc(t) + '</span>'
+      }
+    }
+    out += esc(A.slice(A.length - suf).join(""))
+    return { html: '<div style="white-space:pre-wrap;">' + out + '</div>', count: count }
+  }
+  function rgba(c, a) { return "rgba(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255) + "," + a + ")" }
+  readonly property var diff: showDiff && current && !current.busy ? diffHtml(diffBase(current), editor.text) : ({ html: "", count: 0 })
+  function diffBase(v) { return v && v.source ? v.source : original }
   property bool copied: false
   property string view: "main"              // "main" | "adjust"
   readonly property string original: inputFile.text()
@@ -174,6 +278,9 @@ ShellRoot {
     return c && c.mode === "reply" && c.ok && c.edited ? c.text : ""
   }
 
+  // Prefetched versions wait here, out of the pager, until you pick their tone.
+  property var prefetched: []
+
   function generate(s, opts) {
     var v = {
       id: nextId++, style: s, agent: agent, agentLabel: agentLabel,
@@ -181,14 +288,19 @@ ShellRoot {
       source: baseSource(opts.fromOriginal), edited: false,
       mode: mode, intent: mode === "reply" ? (opts.intent !== undefined ? opts.intent : intent).trim() : "",
       draft: replyDraft(opts.fromOriginal), partial: "",
-      busy: true, ok: false, text: "", ms: 0, startedAt: Date.now()
+      busy: true, ok: false, text: "", ms: 0, startedAt: Date.now(), bg: !!opts.background
     }
-    versions = versions.concat([v])
-    style = s
-    showOriginal = false
-    copied = false
-    now = Date.now()
-    vi = versions.length - 1
+    if (v.bg) {
+      prefetched = prefetched.concat([v])
+    } else {
+      versions = versions.concat([v])
+      style = s
+      showOriginal = false
+      showDiff = false
+      copied = false
+      now = Date.now()
+      vi = versions.length - 1
+    }
     var env = { POLISH_LENGTH: v.length, POLISH_EMOJI: v.emoji, POLISH_NOTE: v.note, POLISH_SOURCE_TEXT: v.source,
                 POLISH_MODE: v.mode, POLISH_INTENT: v.intent, POLISH_DRAFT: v.draft, POLISH_STREAM: "1" }
     if (agent) env.POLISH_AGENT = agent
@@ -202,12 +314,31 @@ ShellRoot {
     return -1
   }
 
+  function prefetchOf(id) {
+    for (var i = 0; i < prefetched.length; i++) if (prefetched[i].id === id) return prefetched[i]
+    return null
+  }
+  // A prefetched job finishing before you pick its tone: just record the result.
+  function finishBg(v, ok, text) {
+    v.busy = false; v.ms = Date.now() - v.startedAt; v.ok = ok
+    v.text = ok ? text : String(text).trim(); v.partial = ""
+    if (!ok) prefetched = prefetched.filter(function(x) { return x !== v })   // retry for real if picked
+  }
+
   function jobLine(id, line) {
-    var i = indexOfVersion(id)
-    if (i < 0 || !versions[i].busy) return
     var kind = line.charAt(0), payload = line.length > 2 ? line.slice(2) : ""
     var value = ""
     if (payload) { try { value = JSON.parse(payload) } catch (e) { return } }
+    var i = indexOfVersion(id)
+    if (i < 0) {
+      var b = prefetchOf(id)
+      if (!b || !b.busy) return
+      if (kind === "P") b.partial += value
+      else if (kind === "R") b.partial = ""
+      else if (kind === "F" || kind === "E") finishBg(b, kind === "F", kind === "F" ? value : (value || "Rewrite failed."))
+      return
+    }
+    if (!versions[i].busy) return
     if (kind === "P" || kind === "R") {
       // Streaming text: mutate in place (no list copy per chunk) and paint it.
       var v = versions[i]
@@ -222,6 +353,8 @@ ShellRoot {
   function jobExited(id) {
     var i = indexOfVersion(id)
     if (i >= 0 && versions[i].busy) finish(i, false, "The agent exited without an answer.")
+    var b = i < 0 ? prefetchOf(id) : null
+    if (b && b.busy) finishBg(b, false, "The agent exited without an answer.")
   }
 
   function finish(i, ok, text) {
@@ -234,7 +367,35 @@ ShellRoot {
     v.partial = ""
     list[i] = v
     versions = list
-    if (i === vi) showVersion()
+    if (i === vi) { showVersion(); showDiff = autoDiffFor(v) }
+    if (ok) maybePrefetch(v)
+  }
+
+  // ---- prefetch (#8b) -----------------------------------------------------
+  // After a rewrite you asked for, quietly generate the next chip's tone.
+  function maybePrefetch(v) {
+    if (!setting("prefetch") || v.mode !== "rewrite" || mode !== "rewrite") return
+    var t = tones, k = -1
+    for (var i = 0; i < t.length; i++) if (t[i].key === v.style) k = i
+    for (var n = 1; n < t.length; n++) {
+      var s = t[(k + n) % t.length].key
+      if (hasVersion(s) || findPrefetch(s)) continue
+      generate(s, { background: true })
+      return
+    }
+  }
+  function hasVersion(s) {
+    for (var i = 0; i < versions.length; i++) if (versions[i].style === s && versions[i].mode === mode) return true
+    return false
+  }
+  // Only a prefetch made for what a fresh pick would rewrite now (same agent, same source).
+  function findPrefetch(s) {
+    var src = baseSource(false)
+    for (var i = 0; i < prefetched.length; i++) {
+      var b = prefetched[i]
+      if (b.style === s && b.mode === mode && b.agent === agent && b.source === src) return b
+    }
+    return null
   }
   property bool streaming: false    // bumps bindings that depend on partial text
 
@@ -253,6 +414,7 @@ ShellRoot {
     var v = at()
     if (v) { style = v.style; mode = v.mode; if (v.mode === "reply") intent = v.intent }
     showVersion()
+    showDiff = autoDiffFor(v)
     if (view === "main") blurText()
   }
 
@@ -268,6 +430,17 @@ ShellRoot {
     showOriginal = false
     for (var i = versions.length - 1; i >= 0; i--) {
       if (versions[i].style === s && versions[i].mode === mode) { vi = i; style = s; return }
+    }
+    var b = findPrefetch(s)
+    if (b) {
+      prefetched = prefetched.filter(function(x) { return x !== b })
+      b.bg = false
+      versions = versions.concat([b])
+      style = s
+      copied = false
+      vi = versions.length - 1
+      if (!b.busy) maybePrefetch(b)
+      return
     }
     generate(s, {})
   }
@@ -286,8 +459,8 @@ ShellRoot {
   }
 
   function toneByIndex(i) {
-    if (i >= styles.length) return
-    var k = styles[i].key
+    if (i >= tones.length) return
+    var k = tones[i].key
     if (view === "adjust") switchAdjustTone(k); else pick(k)
   }
 
@@ -299,7 +472,19 @@ ShellRoot {
     generate(c ? c.style : style, o)
   }
 
+  function toggleOriginal() {
+    showDiff = false
+    showOriginal = !showOriginal
+  }
+  function openSettings() {
+    agentMenu = false
+    if (view === "adjust") saveAdjust()
+    view = view === "settings" ? "main" : "settings"
+    blurText()
+  }
+
   // ---- adjust panel -------------------------------------------------------
+  function closeAdjust() { saveAdjust(); view = "main" }
   function openAdjust() {
     agentMenu = false
     loadAdjust(style)
@@ -486,6 +671,41 @@ ShellRoot {
     }
   }
 
+  // Settings row: label + explanation on the left, a switch on the right.
+  component Toggle: Rectangle {
+    id: tg
+    property string label
+    property string detail
+    property bool checked
+    signal toggled
+    Layout.fillWidth: true
+    implicitHeight: tgCol.implicitHeight + 24
+    radius: 16
+    color: tgMouse.containsMouse && enabled ? root.surface2 : root.surface
+    opacity: enabled ? 1 : 0.45
+    ColumnLayout {
+      id: tgCol
+      anchors { left: parent.left; right: knobTrack.left; verticalCenter: parent.verticalCenter; leftMargin: 16; rightMargin: 12 }
+      spacing: 3
+      Text { Layout.fillWidth: true; text: tg.label; textFormat: Text.PlainText; color: root.fg; font.family: root.font; font.pixelSize: 14 }
+      Text { Layout.fillWidth: true; text: tg.detail; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: root.dim; font.family: root.font; font.pixelSize: 11 }
+    }
+    Rectangle {
+      id: knobTrack
+      anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+      width: 42; height: 24; radius: 12
+      color: tg.checked ? root.accent : root.faint
+      Rectangle {
+        width: 18; height: 18; radius: 9
+        y: 3
+        x: tg.checked ? parent.width - width - 3 : 3
+        color: tg.checked ? root.bg : root.fg
+        Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+      }
+    }
+    MouseArea { id: tgMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (tg.enabled) tg.toggled() }
+  }
+
   component SectionLabel: RowLayout {
     property string label
     property string value
@@ -556,7 +776,7 @@ ShellRoot {
         spacing: 8
         Repeater {
           id: tsRep
-          model: root.styles
+          model: root.tones
           Chip {
             required property var modelData
             label: root.styleLabel(modelData.key)
@@ -575,8 +795,8 @@ ShellRoot {
     }
     NumberAnimation { id: scrollAnim; target: fl; property: "contentX"; duration: 180; easing.type: Easing.OutCubic }
     function ensureVisible() {
-      for (var i = 0; i < root.styles.length; i++) {
-        if (root.styles[i].key !== activeKey) continue
+      for (var i = 0; i < root.tones.length; i++) {
+        if (root.tones[i].key !== activeKey) continue
         var it = tsRep.itemAt(i)
         if (!it) return
         var x = fl.contentX
@@ -629,7 +849,7 @@ ShellRoot {
     Rectangle {
       id: card
       width: Math.min(600, parent.width - 32)
-      height: (root.view === "main" ? col.implicitHeight : adjustCol.implicitHeight) + 40
+      height: (root.view === "main" ? col.implicitHeight : root.view === "adjust" ? adjustCol.implicitHeight : settingsCol.implicitHeight) + 40
       anchors.centerIn: parent
       radius: 22
       color: root.bg
@@ -644,7 +864,9 @@ ShellRoot {
 
       Item { id: focusSink; focus: true }
       readonly property bool typing: editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus
-      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.view = "main" : Qt.quit() }
+      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : Qt.quit() }
+      Shortcut { sequence: "Alt+D"; enabled: root.view === "main"; onActivated: root.toggleDiff() }
+      Shortcut { sequences: ["Ctrl+,", "Alt+S"]; onActivated: root.openSettings() }
       Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; onActivated: root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.editable ? root.apply("replace") : root.copy()) }
       Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.view === "main" && (root.editable || root.mode === "reply"); onActivated: root.apply(root.mode === "reply" ? "paste" : "insert") }
       Shortcut { sequence: "Alt+M"; enabled: root.view === "main"; onActivated: root.setMode(root.mode === "reply" ? "rewrite" : "reply") }
@@ -664,7 +886,7 @@ ShellRoot {
       Shortcut { sequence: "Alt+7"; onActivated: root.toneByIndex(6) }
       Shortcut { sequence: "Alt+8"; onActivated: root.toneByIndex(7) }
       Shortcut { sequence: "Alt+A"; onActivated: root.cycleAgent() }
-      Shortcut { sequence: "Alt+O"; enabled: root.view === "main"; onActivated: root.showOriginal = !root.showOriginal }
+      Shortcut { sequence: "Alt+O"; enabled: root.view === "main"; onActivated: root.toggleOriginal() }
       Shortcut { sequence: "Alt+J"; enabled: root.view === "main"; onActivated: root.openAdjust() }
 
       // ================= main view =================
@@ -734,7 +956,8 @@ ShellRoot {
               }
             }
           }
-          IconButton { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0156}"; onClicked: Qt.quit() }
+          IconButton { id: closeBtn; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0156}"; onClicked: Qt.quit() }
+          IconButton { anchors.right: closeBtn.left; anchors.rightMargin: 6; anchors.verticalCenter: parent.verticalCenter; glyph: "\u{F0493}"; onClicked: root.openSettings() }
         }
 
         // Reply mode: what you want to say (Enter drafts the reply)
@@ -789,10 +1012,10 @@ ShellRoot {
             Item {
               Layout.fillWidth: true
               // Sized for whichever is taller, so toggling the original never resizes the popup.
-              Layout.preferredHeight: Math.min(Math.max(editor.implicitHeight, originalView.implicitHeight, 96), 320)
+              Layout.preferredHeight: Math.min(Math.max(editor.implicitHeight, originalView.implicitHeight, root.showDiff ? diffView.implicitHeight : 0, 96), 320)
               ScrollView {
                 anchors.fill: parent
-                visible: !root.showOriginal
+                visible: !root.showOriginal && !root.showDiff
                 clip: true
                 TextArea {
                   id: editor
@@ -832,6 +1055,26 @@ ShellRoot {
                   NumberAnimation { from: 0.35; to: 1; duration: 700 }
                 }
               }
+              // Changes view: read-only; click it to go back to editing.
+              ScrollView {
+                anchors.fill: parent
+                visible: root.showDiff && !root.showOriginal
+                clip: true
+                TextArea {
+                  id: diffView
+                  text: root.diff.html
+                  readOnly: true
+                  textFormat: TextEdit.RichText
+                  wrapMode: TextEdit.Wrap
+                  color: root.fg
+                  font.family: root.font
+                  font.pixelSize: 16
+                  padding: 4
+                  background: null
+                  HoverHandler { cursorShape: Qt.IBeamCursor }
+                  TapHandler { onTapped: { root.showDiff = false; editor.forceActiveFocus() } }
+                }
+              }
               ScrollView {
                 anchors.fill: parent
                 visible: root.showOriginal
@@ -869,11 +1112,35 @@ ShellRoot {
                 font.family: root.font; font.pixelSize: 13
               }
               Text {
+                visible: root.showDiff && !root.showOriginal && !root.copied
+                text: root.diff.count === 0 ? "No changes needed" : root.diff.count + (root.diff.count === 1 ? " change" : " changes")
+                textFormat: Text.PlainText
+                color: root.dim; font.family: root.font; font.pixelSize: 13
+              }
+              Text {
                 text: root.copied ? "Copied" : ""
                 textFormat: Text.PlainText
                 color: root.dim; font.family: root.font; font.pixelSize: 13
               }
               Item { Layout.fillWidth: true }
+              Rectangle {
+                visible: root.diffAvailable
+                implicitWidth: diffText.implicitWidth + 24
+                implicitHeight: 34
+                radius: 17
+                color: root.showDiff ? Qt.alpha(root.accent, 0.16) : (diffMouse.containsMouse ? root.surface2 : root.surface)
+                border.width: root.showDiff ? 1 : 0
+                border.color: root.accent
+                Text {
+                  id: diffText
+                  anchors.centerIn: parent
+                  text: "Changes"
+                  textFormat: Text.PlainText
+                  color: root.showDiff ? root.accent : root.fg
+                  font.family: root.font; font.pixelSize: 13
+                }
+                MouseArea { id: diffMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.toggleDiff() } }
+              }
               Rectangle {
                 implicitWidth: origText.implicitWidth + 24
                 implicitHeight: 34
@@ -889,7 +1156,7 @@ ShellRoot {
                   color: root.showOriginal ? root.accent : root.fg
                   font.family: root.font; font.pixelSize: 13
                 }
-                MouseArea { id: origMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.showOriginal = !root.showOriginal } }
+                MouseArea { id: origMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.toggleOriginal() } }
               }
               // Version pager: < n / N >
               Rectangle {
@@ -989,7 +1256,7 @@ ShellRoot {
               contentItem: Text {
                 text: "Esc close \u00b7 Ctrl+Enter " + (root.editable ? "replace" : "copy") + " \u00b7 Ctrl+Shift+Enter insert\n"
                     + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate (Shift+\u21BB or Ctrl+Shift+R: from original) \u00b7 Alt+1\u20138 tone\n"
-                    + "Alt+M rewrite/reply \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original"
+                    + "Alt+M rewrite/reply \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
                 textFormat: Text.PlainText
                 color: root.fg
                 font.family: root.font
@@ -1018,7 +1285,7 @@ ShellRoot {
             textFormat: Text.PlainText
             color: cancelMouse.containsMouse ? root.fg : root.dim
             font.family: root.font; font.pixelSize: 15
-            MouseArea { id: cancelMouse; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.saveAdjust(); root.view = "main" } }
+            MouseArea { id: cancelMouse; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.closeAdjust() }
           }
           Text {
             anchors.centerIn: parent
@@ -1082,6 +1349,87 @@ ShellRoot {
           color: root.dim
           font.family: root.font
           font.pixelSize: 11
+        }
+      }
+
+      // ================= settings view =================
+      ColumnLayout {
+        id: settingsCol
+        visible: root.view === "settings"
+        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 }
+        spacing: 14
+
+        Item {
+          Layout.fillWidth: true
+          implicitHeight: 38
+          Text {
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+            text: "Done"
+            textFormat: Text.PlainText
+            color: doneMouse.containsMouse ? root.fg : root.dim
+            font.family: root.font; font.pixelSize: 15
+            MouseArea { id: doneMouse; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.view = "main" }
+          }
+          Text {
+            anchors.centerIn: parent
+            text: "Settings"
+            textFormat: Text.PlainText
+            color: root.fg
+            font.family: root.font; font.pixelSize: 20; font.weight: Font.DemiBold
+          }
+        }
+
+        SectionLabel { label: "Tone chips"; value: root.tones.length + " of " + root.styles.length + " shown" }
+        Flow {
+          Layout.fillWidth: true
+          spacing: 8
+          Repeater {
+            model: root.styles
+            Chip {
+              required property var modelData
+              label: modelData.label
+              glyph: active ? "\u{F012C}" : "\u{F0415}"
+              active: root.setting("tones").indexOf(modelData.key) >= 0
+              onClicked: root.toggleTone(modelData.key)
+            }
+          }
+        }
+        Text {
+          Layout.fillWidth: true
+          text: "Hidden tones still work from the browser menu and apps.conf. Alt+1\u20138 follow the chips you show."
+          textFormat: Text.PlainText
+          wrapMode: Text.Wrap
+          color: root.dim; font.family: root.font; font.pixelSize: 11
+        }
+
+        SectionLabel { Layout.topMargin: 6; label: "Features"; value: "" }
+        Toggle {
+          label: "Show changes"
+          detail: "A Changes button (Alt+D) that highlights what the AI removed and added."
+          checked: root.setting("showChanges")
+          onToggled: root.setSetting("showChanges", !checked)
+        }
+        Toggle {
+          label: "Open Proofread on changes"
+          detail: "Proofread results start in the Changes view, so you can check them at a glance."
+          enabled: root.setting("showChanges")
+          checked: root.setting("autoChanges")
+          onToggled: root.setSetting("autoChanges", !checked)
+        }
+        Toggle {
+          label: "Prepare next tone"
+          detail: "Writes the next chip's version in the background, so switching to it is instant. Uses one extra agent run each time."
+          checked: root.setting("prefetch")
+          onToggled: root.setSetting("prefetch", !checked)
+        }
+
+        Text {
+          Layout.fillWidth: true
+          Layout.topMargin: 4
+          horizontalAlignment: Text.AlignHCenter
+          text: "Saved automatically \u00b7 Esc to go back"
+          textFormat: Text.PlainText
+          color: root.dim; font.family: root.font; font.pixelSize: 11
         }
       }
 
