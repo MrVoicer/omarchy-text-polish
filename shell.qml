@@ -218,7 +218,26 @@ ShellRoot {
   property string adjStyle: style
   property int adjLength: 1
   property int adjEmoji: 0
-  function adjustFor(s) { return adjustByStyle[s] || { length: 1, emoji: 0, note: "" } }
+  function adjustFor(s) { return adjustByStyle[s] || pinFor(s) || { length: 1, emoji: 0, note: "" } }
+
+  // Pinned adjustments: saved per mode+tone in settings.json and applied to every
+  // generation of that tone, in new popups too. Unpinned ones are one-time.
+  // Each: { length: slider index, emoji: slider index, note }
+  property bool adjPinned: false
+  function pinKey(s) { return mode + ":" + s }
+  function pinFor(s) { var p = setting("pins") || {}; return p[pinKey(s)] || null }
+  function setPin(s, a) {
+    var p = Object.assign({}, setting("pins") || {})
+    if (a) p[pinKey(s)] = a; else delete p[pinKey(s)]
+    setSetting("pins", p)
+  }
+  function pinOpts(a) {
+    return { length: lengthArgs[a.length] || "", emoji: mode === "read" ? "" : (emojiArgs[a.emoji] || ""), note: a.note || "", pinned: true }
+  }
+  function toggleAdjPin() {
+    adjPinned = !adjPinned
+    setPin(adjStyle, adjPinned ? { length: adjLength, emoji: adjEmoji, note: adjustNote.text.trim() } : null)
+  }
 
   // ---- agent picker -------------------------------------------------------
   property var agents: []
@@ -327,9 +346,14 @@ ShellRoot {
   property var prefetched: []
 
   function generate(s, opts) {
+    // A plain pick or prefetch uses the tone's pinned adjustments, if any.
+    if (!opts.adjusted && opts.length === undefined && opts.emoji === undefined && opts.note === undefined) {
+      var pin = pinFor(s)
+      if (pin) opts = Object.assign(pinOpts(pin), opts)
+    }
     var v = {
       id: nextId++, style: s, agent: agent, agentLabel: agentLabel,
-      length: opts.length || "", emoji: opts.emoji || "", note: (opts.note || "").trim(),
+      length: opts.length || "", emoji: opts.emoji || "", note: (opts.note || "").trim(), pinned: !!opts.pinned,
       source: baseSource(opts.fromOriginal), edited: false,
       mode: mode, intent: mode === "reply" ? (opts.intent !== undefined ? opts.intent : intent).trim() : "",
       draft: replyDraft(opts.fromOriginal), partial: "",
@@ -522,7 +546,7 @@ ShellRoot {
   // fromOriginal (Shift+click or Ctrl+Shift+R): rewrite the original selection, ignoring edits.
   function regenerate(fromOriginal) {
     var c = at()
-    var o = c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent } : {}
+    var o = c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent, pinned: c.pinned } : {}
     o.fromOriginal = !!fromOriginal
     generate(c ? c.style : style, o)
   }
@@ -549,12 +573,14 @@ ShellRoot {
     var m = Object.assign({}, adjustByStyle)
     m[adjStyle] = { length: adjLength, emoji: adjEmoji, note: adjustNote.text }
     adjustByStyle = m
+    if (adjPinned) setPin(adjStyle, { length: adjLength, emoji: adjEmoji, note: adjustNote.text.trim() })   // keep a pin in sync
   }
   function loadAdjust(s) {
     var a = adjustFor(s)
     adjStyle = s
     adjLength = a.length
     adjEmoji = a.emoji
+    adjPinned = !!pinFor(s)
     adjustNote.text = a.note
   }
   function switchAdjustTone(s) {
@@ -565,7 +591,9 @@ ShellRoot {
   function generateAdjusted() {
     saveAdjust()
     view = "main"
-    generate(adjStyle, { length: lengthArgs[adjLength], emoji: mode === "read" ? "" : emojiArgs[adjEmoji], note: adjustNote.text })
+    if (adjPinned) setPin(adjStyle, { length: adjLength, emoji: adjEmoji, note: adjustNote.text.trim() })
+    generate(adjStyle, { length: lengthArgs[adjLength], emoji: mode === "read" ? "" : emojiArgs[adjEmoji], note: adjustNote.text,
+                         pinned: adjPinned, adjusted: true })
   }
 
   function versionTags(v) {
@@ -579,6 +607,7 @@ ShellRoot {
     if (v.length) t.push(v.length === "short" ? "short" : "long")
     if (v.emoji) t.push(v.emoji === "none" ? "no emoji" : v.emoji + " emoji")
     if (v.note) t.push("“" + (v.note.length > 28 ? v.note.slice(0, 27) + "…" : v.note) + "”")
+    if (v.pinned) t.push("pinned")
     return t.join(", ")
   }
 
@@ -1436,6 +1465,14 @@ ShellRoot {
           }
         }
 
+        Toggle {
+          label: "\u{F0403}  Pin for " + root.styleLabel(root.adjStyle) + (root.mode === "reply" ? " replies" : "")
+          detail: checked ? "Used every time you pick " + root.styleLabel(root.adjStyle) + ", in new popups too. Turn off to make it one-time."
+                          : "Off: these adjustments apply only to this generation."
+          checked: root.adjPinned
+          onToggled: root.toggleAdjPin()
+        }
+
         ActionButton {
           Layout.topMargin: 4
           label: "Generate"
@@ -1446,7 +1483,7 @@ ShellRoot {
         Text {
           Layout.fillWidth: true
           horizontalAlignment: Text.AlignHCenter
-          text: "Adds a new version · settings are remembered per tone"
+          text: "Adds a new version \u00b7 unpinned adjustments last until you close the popup"
           textFormat: Text.PlainText
           wrapMode: Text.Wrap
           color: root.dim

@@ -65,6 +65,11 @@ source window and paste). Browser: `browser-extension/` →
   - `grim -g` and cursor coordinates are logical; on a 1.25-scaled screen
     divide screenshot pixels by 1.25.
   - Log: `$XDG_RUNTIME_DIR/text-polish/popup.log`.
+- **Claude thinking:** `claude -p` ignores `MAX_THINKING_TOKENS`; use
+  `--effort low|medium|high`. Without thinking, Sonnet "corrects itself" mid
+  answer on arithmetic (unit/currency conversions); Read mode uses
+  `--effort high`. Thinking arrives as `thinking_delta` events, which
+  `stream_filter.py` drops, so only the answer streams.
 - **Agents:** OpenCode hangs waiting for stdin EOF (`rewrite.sh` does
   `exec </dev/null`). Codex is fastest with `--ignore-user-config --ephemeral`
   and low reasoning effort.

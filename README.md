@@ -73,7 +73,9 @@ Rewrite → Reply → Read; Brave's right-click **Read with AI**) has its own ch
 
 Adjust works here too (Length plus a request like "just the deadlines"; no
 emoji slider). The buttons are **Close** and **Copy**, and Copy keeps the popup
-open. `polish --mode read` opens straight into it.
+open. `polish --mode read` opens straight into it. With Claude, Read runs at
+high effort (it thinks before answering, about 7s instead of 5) so figures and
+unit conversions come out right; set `POLISH_CLAUDE_EFFORT` to change it.
 
 ## Tone by app (`apps.conf`)
 Without an explicit tone, Polish starts in the tone of the first rule whose
@@ -130,6 +132,10 @@ Saved per user in `~/.local/state/text-polish/settings.json` (not in this repo).
   (None / Few / Moderate / Lots) and a free-text request such as "address it
   to Priya". **Generate** adds a new version. The settings are remembered per
   tone while the popup is open.
+- **Pin for <tone>** (in Adjust) keeps those adjustments for that tone in every
+  new popup: picking the chip applies them automatically, and the footer says
+  "pinned". Unpinned adjustments are one-time. Pins are per mode and tone (a
+  pinned Read → Explain doesn't touch Rewrite) and live in `settings.json`.
 
 ## Layout
 Tone chips sit in one row that scrolls sideways, with Adjust pinned on the
