@@ -193,7 +193,8 @@ ShellRoot {
   readonly property var readStyles: [
     { key: "summarize", label: "Summarize" },
     { key: "keypoints", label: "Key points" },
-    { key: "explain", label: "Explain" }
+    { key: "explain", label: "Explain" },
+    { key: "translate", label: "Translate" }
   ]
   readonly property var modes: [{ key: "rewrite", label: "Rewrite" }, { key: "reply", label: "Reply" }, { key: "read", label: "Read" }]
   // "rewrite": restyle the selection. "reply": draft a reply to the selected message.
@@ -500,6 +501,7 @@ ShellRoot {
       source: opts.source !== undefined ? opts.source : baseSource(opts.fromOriginal), edited: false, refined: !!opts.refined,
       mode: mode, intent: mode === "reply" ? (opts.intent !== undefined ? opts.intent : intent).trim() : "",
       draft: opts.draft !== undefined ? opts.draft : replyDraft(opts.fromOriginal), partial: "",
+      lang: s === "translate" ? (opts.lang || translateTo()) : "",
       busy: true, ok: false, text: "", ms: 0, startedAt: Date.now(), bg: !!opts.background
     }
     if (v.bg) {
@@ -515,7 +517,7 @@ ShellRoot {
       vi = versions.length - 1
     }
     var env = { POLISH_LENGTH: v.length, POLISH_EMOJI: v.emoji, POLISH_NOTE: v.pins.concat(v.note ? [v.note] : []).join("\n"), POLISH_SOURCE_TEXT: v.source,
-                POLISH_MODE: v.mode, POLISH_INTENT: v.intent, POLISH_DRAFT: v.draft, POLISH_STREAM: "1" }
+                POLISH_MODE: v.mode, POLISH_INTENT: v.intent, POLISH_DRAFT: v.draft, POLISH_LANG: v.lang, POLISH_STREAM: "1" }
     if (agent) env.POLISH_AGENT = agent
     var ct = customByKey(s), arg = s
     if (ct) { arg = "custom"; env.POLISH_TONE_NAME = ct.label; env.POLISH_TONE_PROMPT = ct.prompt; env.POLISH_TONE_SAMPLES = ct.samples || "" }
@@ -695,6 +697,21 @@ ShellRoot {
   }
 
   // fromOriginal (Shift+click or Ctrl+Shift+R): rewrite the original selection, ignoring edits.
+  // ---- translate (Read) ----------------------------------------------------
+  readonly property var languages: ["English", "Hindi", "Tamil", "Telugu", "Kannada", "Malayalam", "Marathi", "Bengali",
+                                    "Gujarati", "Punjabi", "Urdu", "Spanish", "French", "German", "Portuguese", "Italian",
+                                    "Arabic", "Russian", "Japanese", "Korean", "Chinese (Simplified)", "Indonesian"]
+  function translateTo() { return setting("translateTo") || "English" }
+  property bool langMenu: false
+  // Pick a target language: remember it and translate into it (a new version).
+  function setTranslateLang(l) {
+    l = String(l).trim().slice(0, 40)
+    langMenu = false
+    if (!l) return
+    setSetting("translateTo", l)
+    generate("translate", { lang: l })
+  }
+
   // ---- refine (/ key) ------------------------------------------------------
   // A one-off instruction applied to the version on screen: Rewrite and Reply
   // rework that version's text; Read re-reads the original with the request.
@@ -712,7 +729,7 @@ ShellRoot {
     text = text.trim()
     var c = at()
     if (!text || !c || c.busy) return
-    var o = { length: c.length, emoji: c.emoji, note: text, intent: c.intent, refined: true }
+    var o = { length: c.length, emoji: c.emoji, note: text, intent: c.intent, lang: c.lang, refined: true }
     if (c.ok && c.mode === "rewrite") o.source = c.text
     if (c.ok && c.mode === "reply") o.draft = c.text
     closeRefine()
@@ -730,7 +747,7 @@ ShellRoot {
 
   function regenerate(fromOriginal) {
     var c = at()
-    var o = c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent } : {}
+    var o = c ? { length: c.length, emoji: c.emoji, note: c.note, intent: c.intent, lang: c.lang } : {}
     o.fromOriginal = !!fromOriginal
     generate(c ? c.style : style, o)
   }
@@ -781,7 +798,7 @@ ShellRoot {
   function versionTags(v) {
     if (!v) return ""
     var t = [v.mode === "reply" ? "Reply, " + (v.style === "proofread" ? "Standard" : styleLabel(v.style))
-           : v.mode === "read" ? "Read, " + styleLabel(v.style) : styleLabel(v.style)]
+           : v.mode === "read" ? "Read, " + styleLabel(v.style) + (v.lang ? " \u2192 " + v.lang : "") : styleLabel(v.style)]
     if (v.intent) t.push("\u201C" + (v.intent.length > 24 ? v.intent.slice(0, 23) + "\u2026" : v.intent) + "\u201D")
     if (v.draft) t.push("from your draft")
     if (v.refined) t.push("refined")
@@ -797,6 +814,7 @@ ShellRoot {
   function busyVerb() {
     var v = current, m = v ? v.mode : mode, st = v ? v.style : style
     if (m === "reply") return "Drafting reply"
+    if (m === "read" && st === "translate") return "Translating to " + (v ? v.lang : translateTo())
     if (m === "read") return st === "explain" ? "Explaining" : st === "keypoints" ? "Finding key points" : "Summarizing"
     return "Rewriting"
   }
@@ -1175,8 +1193,9 @@ ShellRoot {
       // Alt press/release bubbles up here from whichever control has focus.
       Keys.onPressed: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altDown() }
       Keys.onReleased: (e) => { if (e.key === Qt.Key_Alt || e.key === Qt.Key_AltGr) root.altUp() }
-      readonly property bool typing: toneName.activeFocus || tonePrompt.activeFocus || toneSamples.activeFocus || editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus || refineField.activeFocus
-      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : root.view === "tone" ? root.view = "settings" : root.refineOpen ? root.closeRefine() : Qt.quit() }
+      readonly property bool typing: otherLang.activeFocus || toneName.activeFocus || tonePrompt.activeFocus || toneSamples.activeFocus || editor.activeFocus || originalView.activeFocus || adjustNote.activeFocus || intentField.activeFocus || refineField.activeFocus
+      Shortcut { sequence: "Escape"; onActivated: root.view === "adjust" ? root.closeAdjust() : root.view === "settings" ? root.view = "main" : root.view === "tone" ? root.view = "settings" : root.langMenu ? root.langMenu = false : root.refineOpen ? root.closeRefine() : Qt.quit() }
+      Shortcut { sequence: "Alt+L"; enabled: root.view === "main" && langPill.visible; onActivated: root.langMenu = !root.langMenu }
       Shortcut { sequence: "/"; enabled: root.view === "main" && !card.typing; onActivated: root.openRefine() }
       Shortcut { sequence: "Alt+D"; enabled: root.view === "main"; onActivated: root.toggleDiff() }
       Shortcut { sequences: ["Ctrl+,", "Alt+S"]; onActivated: root.openSettings() }
@@ -1524,6 +1543,71 @@ ShellRoot {
                 KeyHint { k: "O" }
                 MouseArea { id: origMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.toggleOriginal() } }
               }
+              // Translate: target language pill (opens the language list)
+              Rectangle {
+                id: langPill
+                visible: !!root.current && root.current.mode === "read" && root.current.style === "translate" && !root.showOriginal
+                implicitWidth: langText.implicitWidth + 24
+                implicitHeight: 34
+                radius: 17
+                color: root.langMenu ? Qt.alpha(root.accent, 0.16) : (langMouse.containsMouse ? root.surface2 : root.surface)
+                border.width: root.langMenu ? 1 : 0
+                border.color: root.accent
+                Text {
+                  id: langText
+                  anchors.centerIn: parent
+                  text: "\u2192 " + (root.current && root.current.lang ? root.current.lang : root.translateTo()) + " \u{F0140}"
+                  textFormat: Text.PlainText
+                  color: root.fg; font.family: root.font; font.pixelSize: 13
+                }
+                MouseArea { id: langMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.blurText(); root.langMenu = !root.langMenu } }
+                KeyHint { k: "L" }
+                Popup {
+                  id: langPopup
+                  visible: root.langMenu
+                  onClosed: root.langMenu = false
+                  y: -height - 8
+                  x: Math.min(0, card.width - 40 - width - langPill.mapToItem(card, 0, 0).x)
+                  width: 300
+                  padding: 8
+                  background: Rectangle { color: root.bg; radius: 14; border.width: 1; border.color: root.faint }
+                  contentItem: ColumnLayout {
+                    spacing: 8
+                    Flow {
+                      Layout.fillWidth: true
+                      spacing: 6
+                      Repeater {
+                        model: root.languages
+                        Rectangle {
+                          required property string modelData
+                          readonly property bool cur: modelData === (root.current && root.current.lang ? root.current.lang : root.translateTo())
+                          width: lt.implicitWidth + 18; height: 28; radius: 14
+                          color: cur ? Qt.alpha(root.accent, 0.16) : (lm.containsMouse ? root.surface2 : root.surface)
+                          border.width: cur ? 1 : 0; border.color: root.accent
+                          Text { id: lt; anchors.centerIn: parent; text: parent.modelData; textFormat: Text.PlainText; color: parent.cur ? root.accent : root.fg; font.family: root.font; font.pixelSize: 12 }
+                          MouseArea { id: lm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.setTranslateLang(parent.modelData) }
+                        }
+                      }
+                    }
+                    Rectangle {
+                      Layout.fillWidth: true
+                      implicitHeight: 32; radius: 16
+                      color: root.surface
+                      border.width: otherLang.activeFocus ? 1 : 0; border.color: root.accent
+                      TextField {
+                        id: otherLang
+                        anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
+                        placeholderText: "Other language\u2026 (Enter)"
+                        placeholderTextColor: root.faint
+                        color: root.fg; selectionColor: root.surface2
+                        font.family: root.font; font.pixelSize: 12
+                        background: null
+                        onAccepted: { root.setTranslateLang(text); text = "" }
+                      }
+                    }
+                  }
+                }
+              }
               // Version pager: < n / N >
               Rectangle {
                 visible: root.versions.length > 1
@@ -1630,7 +1714,7 @@ ShellRoot {
               contentItem: Text {
                 text: "Esc close \u00b7 Ctrl+Enter " + (root.editable ? "replace" : "copy") + " \u00b7 Ctrl+Shift+Enter insert\n"
                     + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate (Shift+\u21BB or Ctrl+Shift+R: from original) \u00b7 Alt+1\u20138 tone\n"
-                    + "/ refine \u00b7 Hold Alt to see keys \u00b7 Alt+M rewrite/reply/read \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
+                    + "/ refine \u00b7 Alt+L translate language \u00b7 Hold Alt to see keys \u00b7 Alt+M rewrite/reply/read \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
                 textFormat: Text.PlainText
                 color: root.fg
                 font.family: root.font

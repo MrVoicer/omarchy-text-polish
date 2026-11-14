@@ -16,6 +16,7 @@ const READ = [
   ["summarize", "Summarize"],
   ["keypoints", "Key points"],
   ["explain", "Explain simply"],
+  ["translate", "Translate"],
 ];
 
 chrome.runtime.onInstalled.addListener(() => {

@@ -8,7 +8,7 @@ import json, os, struct, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 STYLES = {"proofread", "casual", "punchy", "concise", "detailed", "formal", "witty", "tweet",
-          "summarize", "keypoints", "explain"}
+          "summarize", "keypoints", "explain", "translate"}
 
 
 def reply(obj):

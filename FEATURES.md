@@ -85,6 +85,7 @@ For articles, threads, docs and jargon:
 | **Summarize** | The main point in a sentence or two, at most about a quarter of the original. |
 | **Key points** | 3–7 short bullets keeping numbers, names, dates and action items. |
 | **Explain** | Plain-language meaning, jargon and acronyms defined, why it matters. |
+| **Translate** | Natural, fluent translation into 20+ languages (or any you type), keeping tone, names, numbers and formatting. Understands mixed and romanized text like Hinglish and Tanglish. |
 
 - Thinks before answering (with Claude), so figures and unit conversions come
   out right, e.g. "₹75,000 crore (₹750 billion)".
@@ -265,7 +266,6 @@ Shift+↻ starts over from the original.
 
 ## On the roadmap (ideas, not promises)
 
-- Translate as a Read action.
 - Dictation cleanup after voice typing.
 - History across sessions and one-key undo of Replace.
 - Apply a pin to every Read action at once.

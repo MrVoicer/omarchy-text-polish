@@ -72,6 +72,11 @@ Rewrite → Reply → Read; Brave's right-click **Read with AI**) has its own ch
   original's length at most.
 - **Key points**: 3–7 short bullets, keeping numbers, names, dates and action items.
 - **Explain**: what it means in plain words, with jargon and acronyms defined.
+- **Translate**: into the language on the `→ English ▾` pill (Alt+L opens the
+  list: Indian and world languages, or type any other). Picking one makes a new
+  version and is remembered (`translateTo`). Mixed or romanized text (Hinglish,
+  Tanglish) is fully translated; text already in the target language goes to
+  English. Uses the language's own script; ~3s (no extra thinking).
 
 Adjust works here too (Length plus a request like "just the deadlines"; no
 emoji slider). The buttons are **Close** and **Copy**, and Copy keeps the popup
