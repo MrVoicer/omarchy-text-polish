@@ -73,6 +73,10 @@ reply instead of rewriting theirs.
 - It's instructed **not to invent** times, prices or promises and to leave
   `[time]`-style placeholders for you to fill in instead. Check the draft before
   sending: it's an AI, and the rule is a strong instruction, not a guarantee.
+- **Fill in the blanks:** gaps like `[time]` and `[price]` are highlighted;
+  **Tab** / **Shift+Tab** select each in turn so you just type over it. Paste or
+  Copy with a gap still open asks once first ("2 blanks left"), so `[price]`
+  never reaches a client by accident.
 - Every tone works for replies. Edit a draft and restyle it, and your edit is
   kept.
 - **Paste** drops the reply at your cursor; **Copy** copies it and closes.
@@ -212,6 +216,7 @@ Shift+↻ starts over from the original.
 | Ctrl+Enter | Replace (Copy in Reply/Read) |
 | Ctrl+Shift+Enter | Insert / Paste |
 | ← / → | Previous / next version |
+| Tab / Shift+Tab | Next / previous blank in a reply |
 | / | Refine |
 | Ctrl+R, Ctrl+Shift+R | Regenerate, regenerate from original |
 | Alt+1…8 | Pick a tone / Read action |
@@ -303,8 +308,6 @@ Shift+↻ starts over from the original.
 
 - **Paste from clipboard** for apps that don't share their selection (Ctrl+C,
   then a key).
-- **Fill in the blanks:** Tab through a reply's `[time]`/`[price]` gaps; Paste
-  warns if any are left.
 - **Stop and recover:** cancel a slow run, clear messages for sign-in and
   rate-limit problems, nothing you typed lost.
 - **Accept changes one by one** in the Changes view.

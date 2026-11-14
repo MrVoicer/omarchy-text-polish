@@ -60,7 +60,9 @@ Brave and choose **Reply with AI**. Reply drafts the answer to the selected
 message instead of restyling it. Type what you want to say in the box at the top
 ("yes, but Monday works better") and press Enter. With no intent it writes a
 neutral reply that commits to nothing. It's told never to invent times, prices or
-promises: missing details become `[placeholders]` (check before sending). Every tone applies
+promises: missing details become `[placeholders]`, highlighted in the result.
+**Tab** / **Shift+Tab** select them one by one (type to fill); Paste or Copy
+with any left asks once first (press again to send as is). Every tone applies
 (Proofread shows as **Standard**). If you edit a reply and regenerate, your
 edit is used as the draft. Buttons: **Paste** at your cursor in the source
 window, or **Copy** (copies and closes) to paste into the chat yourself.

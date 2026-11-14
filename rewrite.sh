@@ -210,7 +210,7 @@ $draft
 $want
 These STYLE rules describe the tone and shape of the REPLY (length targets refer to a typical reply, not to the message):
 $task
-Rules: reply in the same language as the message. Never invent facts, dates, times, numbers, prices, names or commitments the user did not give; where one is needed, leave a short placeholder in square brackets such as [time]. Do not quote or summarize the message back. No signature unless the user asked for one. Output ONLY the reply text: no preface, no quotes, no tags, no explanation."
+Rules: reply in the same language as the message. Never invent facts, dates, times, numbers, prices, names or commitments the user did not give; where one is needed, leave a short placeholder in square brackets such as [time]. Do not quote or summarize the message back. No signature unless the user asked for one. Plain text only, as typed in a chat or email box: no markdown such as ** or # (a simple \"- \" list is fine). Output ONLY the reply text: no preface, no quotes, no tags, no explanation."
   prompt="<message>
 $text
 </message>"

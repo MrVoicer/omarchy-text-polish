@@ -935,6 +935,50 @@ ShellRoot {
     if (v.mode === "read") return styleLabel(v.style) + (v.lang ? " \u2192 " + v.lang : "")
     return styleLabel(v.style)
   }
+  // ---- fill in the blanks (Reply) ---------------------------------------
+  // Reply never invents details; it leaves [time]-style gaps. Highlight them,
+  // let Tab / Shift+Tab select each in turn, and ask once before sending a
+  // reply that still has some. Brackets copied from the message itself, links
+  // ([text](url)) and checkboxes ([ ], [x]) aren't blanks.
+  readonly property var blanks: {
+    if (mode !== "reply" || !current || current.busy || !current.ok) return []
+    var t = editor.text, out = [], re = /\[([^\[\]\n]{1,40})\](?!\()/g, m
+    while ((m = re.exec(t)) !== null) {
+      var inner = m[1].trim()
+      if (!/[A-Za-zÀ-￿]/.test(inner) || /^[xX]$/.test(inner)) continue
+      if (original.indexOf(m[0]) >= 0) continue
+      out.push({ s: m.index, e: m.index + m[0].length, label: m[0] })
+    }
+    return out
+  }
+  function nextBlank(dir) {
+    var b = blanks
+    if (!b.length) return false
+    var pos = editor.activeFocus ? (dir > 0 ? editor.selectionEnd : editor.selectionStart) : -1
+    var pick = null, i
+    if (dir > 0) { for (i = 0; i < b.length; i++) if (b[i].s >= pos) { pick = b[i]; break } }
+    else { for (i = b.length - 1; i >= 0; i--) if (pos >= 0 && b[i].e <= pos) { pick = b[i]; break } }
+    if (!pick) pick = dir > 0 ? b[0] : b[b.length - 1]
+    showDiff = false; showOriginal = false
+    editor.forceActiveFocus()
+    editor.select(pick.s, pick.e)
+    return true
+  }
+  // The text you chose to send with blanks left (a second press sends it).
+  property string blankAck: ""
+  readonly property string blankNotice: {
+    if (!blanks.length || blankAck !== editor.text) return ""
+    var n = blanks.length
+    return (n === 1 ? "1 blank left: " + blanks[0].label : n + " blanks left")
+           + ". Tab to fill, or press again to send as is."
+  }
+  function blanksBlock() {
+    if (mode !== "reply" || !blanks.length || blankAck === editor.text) return false
+    blankAck = editor.text
+    nextBlank(1)
+    return true
+  }
+
   function recordHistory() {
     var v = at()
     if (!v || v.busy || !v.ok || !setting("keepHistory")) return
@@ -1005,6 +1049,7 @@ ShellRoot {
 
   function apply(how) {
     if (busy || !current.ok || handingOver) return
+    if (how === "paste" && blanksBlock()) return
     recordHistory()
     handingOver = true
     // ORIGINAL lets Undo hand your text back where the app has no undo (terminals).
@@ -1019,6 +1064,7 @@ ShellRoot {
 
   function copyAndClose() {
     if (busy || !current.ok || handingOver) return
+    if (blanksBlock()) return
     recordHistory()
     handingOver = true
     runWithInput(["wl-copy"], finalText(), function(code) {
@@ -1385,6 +1431,9 @@ ShellRoot {
       Shortcut { sequences: ["Ctrl+,", "Alt+S"]; onActivated: root.openSettings() }
       Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: root.view === "main" || root.view === "adjust" || root.view === "tone"; onActivated: root.view === "tone" ? root.saveToneEditor() : root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.mode === "rewrite" && root.editable ? root.apply("replace") : root.copy()) }
       Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.view === "main" && root.mode !== "read" && (root.editable || root.mode === "reply"); onActivated: root.apply(root.mode === "reply" ? "paste" : "insert") }
+      // Tab / Shift+Tab: next / previous blank in a reply (the editor handles them too, below).
+      Shortcut { sequence: "Tab"; enabled: root.view === "main" && root.blanks.length > 0 && (!card.typing || editor.activeFocus); onActivated: root.nextBlank(1) }
+      Shortcut { sequences: ["Backtab", "Shift+Tab"]; enabled: root.view === "main" && root.blanks.length > 0 && (!card.typing || editor.activeFocus); onActivated: root.nextBlank(-1) }
       Shortcut { sequence: "Alt+M"; enabled: root.view === "main"; onActivated: root.cycleMode() }
       Shortcut { sequence: "Ctrl+R"; enabled: root.view === "main"; onActivated: root.regenerate(false) }
       Shortcut { sequence: "Ctrl+Shift+R"; enabled: root.view === "main"; onActivated: root.regenerate(true) }
@@ -1602,6 +1651,30 @@ ShellRoot {
                   font.pixelSize: 16
                   padding: 4
                   background: null
+                  Keys.onTabPressed: (e) => { if (!root.nextBlank(1)) e.accepted = false }
+                  Keys.onBacktabPressed: (e) => { if (!root.nextBlank(-1)) e.accepted = false }
+                  // Blanks: a soft accent fill with an underline (first line only if one wraps).
+                  Repeater {
+                    model: root.blanks
+                    delegate: Rectangle {
+                      required property var modelData
+                      readonly property rect a: { editor.width; editor.contentHeight; editor.text; return editor.positionToRectangle(modelData.s) }
+                      readonly property rect b: { editor.width; editor.contentHeight; editor.text; return editor.positionToRectangle(modelData.e) }
+                      x: a.x - 1; y: a.y
+                      width: (b.y === a.y ? b.x - a.x : editor.width - editor.rightPadding - a.x) + 2
+                      height: a.height
+                      radius: 3
+                      // The one Tab selected is filled more strongly, so you see where you are.
+                      readonly property bool picked: editor.selectionStart === modelData.s && editor.selectionEnd === modelData.e
+                      color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, picked ? 0.42 : 0.16)
+                      Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 2; radius: 1; color: root.accent
+                      }
+                    }
+                  }
                   // Keep hand edits with their version so paging away and back preserves them.
                   onTextChanged: {
                     var v = root.at()
@@ -1675,6 +1748,13 @@ ShellRoot {
               Layout.fillWidth: true
               spacing: 8
               IconButton { glyph: root.copied ? "\u{F012C}" : "\u{F018F}"; enabled: !root.showOriginal && !root.busy && root.current.ok; onClicked: root.copy() }
+              Text {
+                visible: root.blanks.length > 0 && !root.showOriginal
+                text: root.blanks.length + (root.blanks.length === 1 ? " blank" : " blanks") + " to fill \u00b7 Tab"
+                textFormat: Text.PlainText
+                color: root.accent; font.family: root.font; font.pixelSize: 13
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.nextBlank(1) }
+              }
               Text {
                 // X/Twitter limit; JS length counts emoji as 2, close to X's own weighting.
                 visible: root.current && root.current.style === "tweet" && !root.showOriginal && !root.busy && root.current.ok
@@ -1880,6 +1960,7 @@ ShellRoot {
             text: {
               var v = root.current
               if (root.actionError) return "\u26A0 " + root.actionError
+              if (root.blankNotice) return "\u26A0 " + root.blankNotice
               if (v && !v.busy && v.warning) return "\u26A0 " + v.warning
               var head = !v ? "Starting\u2026"
                        : v.busy ? "Generating with " + v.agentLabel
@@ -1888,7 +1969,7 @@ ShellRoot {
             }
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            color: root.actionError || (root.current && !root.current.busy && root.current.warning) ? root.danger : root.dim
+            color: root.actionError || root.blankNotice || (root.current && !root.current.busy && root.current.warning) ? root.danger : root.dim
             font.family: root.font
             font.pixelSize: 11
           }
@@ -1905,7 +1986,7 @@ ShellRoot {
               contentItem: Text {
                 text: "Esc close \u00b7 Ctrl+Enter " + (root.editable ? "replace" : "copy") + " \u00b7 Ctrl+Shift+Enter insert\n"
                     + "\u2190/\u2192 versions \u00b7 Ctrl+R regenerate (Shift+\u21BB or Ctrl+Shift+R: from original) \u00b7 Alt+1\u20138 tone\n"
-                    + "/ refine \u00b7 Alt+H history \u00b7 Alt+L translate language \u00b7 Hold Alt to see keys \u00b7 Alt+M rewrite/reply/read \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
+                    + "/ refine \u00b7 Tab next blank (reply) \u00b7 Alt+H history \u00b7 Alt+L translate language \u00b7 Hold Alt to see keys \u00b7 Alt+M rewrite/reply/read \u00b7 Alt+J adjust \u00b7 Alt+A agent \u00b7 Alt+O original \u00b7 Alt+D changes \u00b7 Alt+S settings"
                 textFormat: Text.PlainText
                 color: root.fg
                 font.family: root.font
