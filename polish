@@ -110,6 +110,7 @@ else
 fi
 
 export POLISH_VIEW=$view
+export POLISH_SOURCE=$( ((clipboard)) && echo clipboard || echo selection)
 export POLISH_APP=$(jq -r '.class // empty' <<<"$win")
 export POLISH_INPUT=$input POLISH_MODE_START=$mode POLISH_STYLE=$style POLISH_EDITABLE=$editable POLISH_DIR=$DIR
 export POLISH_WINDOW=$(jq -r '.address // empty' <<<"$win")

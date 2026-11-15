@@ -226,6 +226,8 @@ that's there.
 - **App won't share its selection?** Press Ctrl+C, then **SUPER + ALT + C**:
   Polish works on what you copied. (Copy-only in Rewrite, since clipboard text
   could have come from anywhere; Reply's Paste at your cursor still works.)
+  It's also the quickest way to answer a post: copy it, click into the reply
+  box, press SUPER + ALT + C, switch to Reply and press Paste.
 - **Hold Alt** and small keycaps appear on every control (1–8 on tones, A agent,
   M mode, S settings, J Adjust, D Changes, O Original). Let go and they vanish;
   a quick Alt+key never flashes them.

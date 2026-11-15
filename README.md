@@ -43,6 +43,8 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
 - **Apps that don't share their selection**: Ctrl+C, then **SUPER + ALT + C**
   (`polish --clipboard`) works on the clipboard instead. Copy-only in Rewrite
   (the text could have come from anywhere, so nothing is pasted over).
+  Also the easy way to answer a post: copy it, click into the reply box, press
+  SUPER + ALT + C, switch to Reply (Alt+M) and press Paste.
 - **Stop**: Esc or the ■ button (the ↻ while generating) ends the run, agent
   and all. Agent failures show one plain sentence with the fix (sign in, usage
   limit, network, model, not installed, timeout), then the raw details.
