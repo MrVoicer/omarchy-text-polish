@@ -100,7 +100,7 @@ For articles, threads, docs and jargon:
 - Thinks before answering (with Claude), so figures and unit conversions come
   out right, e.g. "₹75,000 crore (₹750 billion)".
 - Opens on the action you used last.
-- *Read with AI* in the browser right-click menu.
+- *Read with AI* in the browser right-click menu, or **Ctrl + Right Alt**.
 
 ---
 
@@ -221,13 +221,12 @@ that's there.
 
 ## Keyboard-first, but mouse-friendly
 
-- **Right Alt** opens Rewrite, **Shift + Right Alt** opens Reply,
-  **SUPER + ALT + R / Y** as alternatives.
-- **App won't share its selection?** Press Ctrl+C, then **SUPER + ALT + C**:
-  Polish works on what you copied. (Copy-only in Rewrite, since clipboard text
-  could have come from anywhere; Reply's Paste at your cursor still works.)
-  It's also the quickest way to answer a post: copy it, click into the reply
-  box, press SUPER + ALT + C, switch to Reply and press Paste.
+- **One key per mode:** Right Alt opens Rewrite, **Shift + Right Alt** Reply,
+  **Ctrl + Right Alt** Read (**SUPER + ALT + R / Y / E** as alternatives).
+- **Reply to what you copied:** copy a post or email, click into the reply box,
+  press **SUPER + ALT + C**, then Paste: the reply lands right at your cursor.
+  It also covers apps that don't share their selection. (Switch to Rewrite with
+  Alt+M; that's Copy-only, since clipboard text could have come from anywhere.)
 - **Hold Alt** and small keycaps appear on every control (1–8 on tones, A agent,
   M mode, S settings, J Adjust, D Changes, O Original). Let go and they vanish;
   a quick Alt+key never flashes them.
@@ -249,7 +248,7 @@ that's there.
 | Alt+O | Original |
 | Alt+S or Ctrl+, | Settings |
 | Alt+H | History |
-| Super+Alt+C | Polish the copied text (clipboard) |
+| Super+Alt+C | Reply to the copied text (clipboard) |
 | Super+Alt+Z | Undo the last Replace / Insert / Paste |
 | Esc | Stop a running generation; else close the open panel, then the popup |
 

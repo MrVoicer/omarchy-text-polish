@@ -38,13 +38,15 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
   `key` in its manifest so the native-messaging allow-list keeps matching).
 - **Reply straight away**: **Shift + Right Alt** or **SUPER + ALT + Y** opens
   directly in Reply mode.
+- **Read straight away**: **Ctrl + Right Alt** or **SUPER + ALT + E** opens
+  directly in Read mode (summarize, key points, explain).
 - **Any app**: highlight text, press **SUPER + ALT + R** or tap **Right Alt** (reads the Wayland
   primary selection). Bound in `~/.config/hypr/bindings.lua`.
-- **Apps that don't share their selection**: Ctrl+C, then **SUPER + ALT + C**
-  (`polish --clipboard`) works on the clipboard instead. Copy-only in Rewrite
-  (the text could have come from anywhere, so nothing is pasted over).
-  Also the easy way to answer a post: copy it, click into the reply box, press
-  SUPER + ALT + C, switch to Reply (Alt+M) and press Paste.
+- **Reply to copied text**: Ctrl+C a post or email, click into the reply box,
+  press **SUPER + ALT + C** (`polish --clipboard --mode reply`) and press Paste:
+  the reply lands at your cursor. Also for apps that don't share their
+  selection (Alt+M switches to Rewrite, which is Copy-only here: the text could
+  have come from anywhere, so nothing is pasted over).
 - **Stop**: Esc or the ■ button (the ↻ while generating) ends the run, agent
   and all. Agent failures show one plain sentence with the fix (sign in, usage
   limit, network, model, not installed, timeout), then the raw details.
