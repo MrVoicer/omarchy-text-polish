@@ -64,8 +64,9 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
 Switch **Rewrite | Reply** in the header (Alt+M), or right-click a message in
 Brave and choose **Reply with AI**. Reply drafts the answer to the selected
 message instead of restyling it. Type what you want to say in the box at the top
-("yes, but Monday works better") and press Enter. With no intent it writes a
-neutral reply that commits to nothing. It's told never to invent times, prices or
+("yes, but Monday works better") and press Enter. With no intent it answers
+each question, with a gap such as `[rate]` wherever only you know the answer,
+and accepts or declines nothing for you. It's told never to invent times, prices or
 promises: missing details become `[placeholders]`, highlighted in the result.
 **Tab** / **Shift+Tab** select them one by one (type to fill); Paste or Copy
 with any left asks once first (press again to send as is). Every tone applies

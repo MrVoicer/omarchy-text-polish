@@ -200,7 +200,7 @@ if [[ $mode == reply ]]; then
   if [[ -n ${intent//[[:space:]]/} ]]; then
     want="What the user wants to say (from the user, follow it): $intent"
   else
-    want="The user did not say what to reply. Write a sensible, friendly reply that responds to each question or request in the message without committing the user to anything specific (no yes/no decisions, dates or promises)."
+    want="The user did not say what to reply. Write a sensible, friendly reply that answers each question in the message directly. Where the answer is a fact only the user knows (a price, rate, date, time, place, number or name), put a short placeholder in square brackets such as [rate] or [start date] where that fact goes, for the user to fill in, instead of deflecting, saying it depends, or asking for more details. Do not accept or decline invitations or requests on the user's behalf, and make no promises."
   fi
   draft=${POLISH_DRAFT:-}
   (( ${#draft} <= 20000 )) || fail "Your draft reply is too long (${#draft} characters; Polish handles up to 20000)."

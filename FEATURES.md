@@ -69,7 +69,9 @@ text isn't editable.
 Select a message (WhatsApp Web, Gmail, Slack, anything) and Polish drafts *your*
 reply instead of rewriting theirs.
 - Say what you want in one line ("yes, but Monday works better") and press Enter.
-- With nothing typed, it writes a sensible reply that commits you to nothing.
+- With nothing typed, it still answers each question, leaving a gap such as
+  [rate] or [start date] wherever only you know the answer, and it is told not
+  to accept or decline anything for you.
 - It's instructed **not to invent** times, prices or promises and to leave
   `[time]`-style placeholders for you to fill in instead. Check the draft before
   sending: it's an AI, and the rule is a strong instruction, not a guarantee.
