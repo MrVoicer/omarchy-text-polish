@@ -71,7 +71,10 @@ promises: missing details become `[placeholders]`, highlighted in the result.
 with any left asks once first (press again to send as is). Every tone applies
 (Proofread shows as **Standard**). If you edit a reply and regenerate, your
 edit is used as the draft. Buttons: **Paste** at your cursor in the source
-window, or **Copy** (copies and closes) to paste into the chat yourself.
+window, or **Copy** (copies and closes) to paste into the chat yourself. From
+the browser's right-click menu on page text (a tweet, say), selecting it took
+the cursor out of the reply box, so only Copy is offered and a toast says to
+click the reply box and press Ctrl+V.
 
 ## Read mode
 For text you're reading rather than writing, the **Read** tab (Alt+M cycles

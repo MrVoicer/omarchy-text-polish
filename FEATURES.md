@@ -80,6 +80,9 @@ reply instead of rewriting theirs.
 - Every tone works for replies. Edit a draft and restyle it, and your edit is
   kept.
 - **Paste** drops the reply at your cursor; **Copy** copies it and closes.
+  When you right-click a post in the browser, selecting it took your cursor out
+  of the reply box, so Polish offers only Copy and tells you to click the reply
+  box and press Ctrl+V.
 - Opens directly with **Shift + Right Alt**, or *Reply with AI* in the browser.
 
 ### Read: understand text you didn't write

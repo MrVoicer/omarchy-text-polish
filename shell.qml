@@ -1096,6 +1096,9 @@ ShellRoot {
     handingOver = true
     runWithInput(["wl-copy"], finalText(), function(code) {
       root.handingOver = false
+      if (code === 0 && !root.editable)
+        Quickshell.execDetached(["bash", "-c", '. "$1/lib.sh"; polish_toast "$2"', "_", dir,
+                                 "Copied. Click the reply box, then press Ctrl+V."])
       if (code === 0) root.finalQuit()
       else root.actionError = "Copy failed (wl-copy exited " + code + ")."
     })
@@ -1457,7 +1460,7 @@ ShellRoot {
       Shortcut { sequence: "Alt+D"; enabled: root.view === "main"; onActivated: root.toggleDiff() }
       Shortcut { sequences: ["Ctrl+,", "Alt+S"]; onActivated: root.openSettings() }
       Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: root.view === "main" || root.view === "adjust" || root.view === "tone"; onActivated: root.view === "tone" ? root.saveToneEditor() : root.view === "adjust" ? root.generateAdjusted() : root.mode === "reply" ? root.copyAndClose() : (root.mode === "rewrite" && root.editable ? root.apply("replace") : root.copy()) }
-      Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.view === "main" && root.mode !== "read" && (root.editable || root.mode === "reply"); onActivated: root.apply(root.mode === "reply" ? "paste" : "insert") }
+      Shortcut { sequences: ["Ctrl+Shift+Return", "Ctrl+Shift+Enter"]; enabled: root.view === "main" && root.mode !== "read" && root.editable; onActivated: root.apply(root.mode === "reply" ? "paste" : "insert") }
       // Tab / Shift+Tab: next / previous blank in a reply (the editor handles them too, below).
       Shortcut { sequence: "Tab"; enabled: root.view === "main" && root.blanks.length > 0 && (!card.typing || editor.activeFocus); onActivated: root.nextBlank(1) }
       Shortcut { sequences: ["Backtab", "Shift+Tab"]; enabled: root.view === "main" && root.blanks.length > 0 && (!card.typing || editor.activeFocus); onActivated: root.nextBlank(-1) }
@@ -1971,7 +1974,10 @@ ShellRoot {
           // Reply: Paste at your cursor / Copy and close, to paste into the chat yourself.
           // Read: Close / Copy (stays open so you can keep reading).
           readonly property bool writes: root.mode === "reply" || (root.mode === "rewrite" && root.editable)
+          // Reply to text the browser says isn't in a text box (e.g. a tweet): selecting
+          // it took the cursor out of the reply box, so Paste would land nowhere.
           ActionButton {
+            visible: !(root.mode === "reply" && !root.editable)
             label: root.mode === "reply" ? "Paste" : (parent.writes ? "Insert" : "Close")
             enabled: parent.writes ? (!root.busy && root.current.ok) : true
             onClicked: root.mode === "reply" ? root.apply("paste") : (parent.writes ? root.apply("insert") : root.quit())
