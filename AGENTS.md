@@ -135,6 +135,16 @@ source window and paste). Browser: `browser-extension/` →
   user's text) to stderr, which must not be shown or pattern-matched.
 - **Clipboard tests:** don't overwrite the user's clipboard (it may hold an
   image). Put a stand-in `wl-paste` script first in PATH instead.
+- **Global shortcuts go through `keys.sh`.** It owns `~/.config/hypr/polish.lua`
+  (loaded by one `require("hypr.polish")` line in `hyprland.lua`); never write
+  Polish keys into the user's `bindings.lua`. Clashes come from `hyprctl binds -j`
+  (modmask: SHIFT 1, CTRL 4, ALT 8, SUPER 64). Omarchy's dictation binds
+  `ALT + Alt_R` with `ignore_mods`, so it clashes with every Right Alt combo.
+  All takeover `hl.unbind` lines must come before Polish's own binds (an unbind
+  of `ALT + Alt_R` after binding it removes Polish's key). A taken-over binding
+  no longer appears in `hyprctl binds`, so keys.sh carries its unbind line
+  forward from the previous file. Test rollback with a bogus key in a scratch
+  `XDG_STATE_HOME` keys.conf.
 - **Every popup exit goes through `finalQuit()`**: it deletes this launch's
   input file and waits for the ordered write queue (settings/history) to drain.
 - **Testing traps:** `timeout` kills the whole process group, including

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Turn `claude -p --output-format stream-json --include-partial-messages` into
 Polish's line protocol: one `P <json string>` line per text delta on stdout.
 

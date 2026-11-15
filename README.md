@@ -27,8 +27,37 @@ CLI for at least one of Claude Code, Codex, OpenCode or Command Code.
 ## Install
 ```bash
 git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
-~/.config/text-polish/install.sh   # registers the browser bridge, prints next steps
+~/.config/text-polish/install.sh   # browser bridge + keyboard shortcuts
 ```
+
+### Shortcuts
+`install.sh` runs `keys.sh apply`, which writes **`~/.config/hypr/polish.lua`**
+and adds one line to `hyprland.lua` to load it. Polish never edits your
+`bindings.lua`. Defaults:
+
+| Action | Key | Also |
+|---|---|---|
+| Rewrite | Right Alt (tap) | SUPER + ALT + R |
+| Reply | Shift + Right Alt | SUPER + ALT + Y |
+| Read | Ctrl + Right Alt | SUPER + ALT + E |
+| Reply to copied text | SUPER + ALT + C | |
+| Undo last Replace/Insert/Paste | SUPER + ALT + Z | |
+
+A key that something else already uses is **skipped and listed**, never taken
+silently. On Omarchy with dictation installed, Right Alt is dictation's
+push-to-talk, so the three Right Alt keys are skipped until you choose. To
+change keys, edit `~/.local/state/text-polish/keys.conf` and run
+`keys.sh apply` (`keys.sh list` shows what's active):
+
+```
+rewrite = ALT + Alt_R !        # "!" takes the key over (dictation keeps F9 / Alt+Space)
+read2 = SUPER + ALT + Q        # another key
+undo =                         # no key
+```
+
+Actions: `rewrite`, `rewrite2`, `reply`, `reply2`, `read`, `read2`, `clipboard`,
+`undo`. After writing, Hyprland is reloaded; if it reports an error, the
+previous file is put back.
 
 ## Triggers
 - **Browser right-click** (Brave Origin / Chromium): select text → right-click →
@@ -41,7 +70,7 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
 - **Read straight away**: **Ctrl + Right Alt** or **SUPER + ALT + E** opens
   directly in Read mode (summarize, key points, explain).
 - **Any app**: highlight text, press **SUPER + ALT + R** or tap **Right Alt** (reads the Wayland
-  primary selection). Bound in `~/.config/hypr/bindings.lua`.
+  primary selection). Keys: see Shortcuts above.
 - **Reply to copied text**: Ctrl+C a post or email, click into the reply box,
   press **SUPER + ALT + C** (`polish --clipboard --mode reply`) and press Paste:
   the reply lands at your cursor. Also for apps that don't share their
@@ -61,6 +90,7 @@ git clone https://github.com/MrVoicer/omarchy-text-polish ~/.config/text-polish
   feeds the picker. `POLISH_MODEL` changes Claude's model.
 - `apply.sh replace|insert ADDR TEXT` — wl-copy, refocus, `wtype` Ctrl+V
   (Ctrl+Shift+V in terminals). Insert = Right arrow, space, paste.
+- `keys.sh apply|list` — writes `~/.config/hypr/polish.lua` from `keys.conf`.
 - `native-host.py` — bridge from the extension; `install.sh` registers it
   (`NativeMessagingHosts/com.voicer.text_polish.json` for Brave/Chromium/Chrome).
 
@@ -251,3 +281,7 @@ obeyed. Greetings and filler are the style's call.
   prompt, whatever the model), Command Code ~6s, OpenCode ~4–10s.
 - Replace leaves the rewritten text on the clipboard.
 - Logs: `$XDG_RUNTIME_DIR/text-polish/popup.log`, `agent-<style>.err`.
+
+## License
+GPL-3.0-or-later (see `LICENSE`). You may use, change and share Polish; if you
+share a changed version, it must stay open source under the same license.

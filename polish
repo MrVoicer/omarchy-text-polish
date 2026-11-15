@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # polish — open the AI rewrite popup for the selected text.
 #   polish                       use the primary selection (whatever is highlighted)
 #   polish --file F [--style S] [--editable yes|no] [--mode rewrite|reply|read]

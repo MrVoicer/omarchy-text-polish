@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # apply.sh --stdin     read a JSON request on stdin, hand it to a detached copy of
 #                      itself and exit 0 at once (the popup waits for that, then
 #                      closes). Request: {how: replace|insert|paste, addr, text,

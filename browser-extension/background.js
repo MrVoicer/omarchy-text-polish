@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Polish — adds "Rewrite with AI", "Reply with AI" and "Read with AI" to the
 // right-click menu on selected text and
 // hands the selection to the local `polish` popup via native messaging.

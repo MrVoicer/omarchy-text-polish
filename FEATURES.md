@@ -318,6 +318,11 @@ that's there.
 - Browser right-click menu: Brave / Chromium / Chrome via a small unpacked
   extension.
 - Install: `git clone … ~/.config/text-polish && ~/.config/text-polish/install.sh`.
+  The installer also sets up the keyboard shortcuts in a file of their own
+  (`~/.config/hypr/polish.lua`); it never edits your own key settings, never
+  takes a key that's already used (it lists those instead), and puts things
+  back if Hyprland reports an error.
+- Free and open source under the GPL (version 3 or later).
 
 ## Honest limits
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Polish undo toast: a small bar at the bottom of the screen after Replace,
 // Insert or Paste. Shown by apply.sh (quickshell -p toast.qml), independent of
 // desktop notifications, so it also shows with Do Not Disturb on. Takes no

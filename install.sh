@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Registers the native-messaging host for Brave / Chromium so the
-# "Rewrite with AI" context menu can open the popup. Safe to re-run.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Sets Polish up: registers the native-messaging host for Brave / Chromium (so
+# the browser's "Rewrite with AI" menu can open the popup) and turns on the
+# keyboard shortcuts (keys.sh). Safe to re-run.
 set -euo pipefail
 DIR=$(dirname "$(readlink -f "$0")")
 ID=$(<"$DIR/extension-id.txt")
@@ -15,16 +17,18 @@ for d in ~/.config/BraveSoftware/Brave-Origin ~/.config/BraveSoftware/Brave-Brow
     >"$d/NativeMessagingHosts/com.voicer.text_polish.json"
   echo "registered native host in $d"
 done
+# Shortcuts: Polish writes its own ~/.config/hypr/polish.lua (never your
+# bindings.lua) and loads it with one line in hyprland.lua. Keys another binding
+# already uses are skipped and listed; change them in
+# ~/.local/state/text-polish/keys.conf and run keys.sh apply again.
+echo
+if command -v hyprctl >/dev/null && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+  "$DIR/keys.sh" apply || echo "Shortcuts weren't set up (see above). Fix keys.conf, then run $DIR/keys.sh apply"
+else
+  echo "Hyprland isn't running here, so shortcuts weren't set up. Later, run: $DIR/keys.sh apply"
+fi
 cat <<MSG
 
-Next:
-  1. Browser: open brave://extensions (or chrome://extensions), enable Developer
-     mode, "Load unpacked" -> $DIR/browser-extension
-  2. Hotkey (Omarchy / Hyprland Lua), add to ~/.config/hypr/bindings.lua:
-     o.bind("SUPER + ALT + R", "Rewrite selected text with AI", '"$DIR/polish"')
-     o.bind("SUPER + ALT + Y", "Reply to selected text with AI", '"$DIR/polish" --mode reply')
-     o.bind("SUPER + ALT + E", "Read selected text with AI", '"$DIR/polish" --mode read')
-     o.bind("SUPER + ALT + C", "AI reply to copied text", '"$DIR/polish" --clipboard --mode reply')
-     o.bind("SUPER + ALT + Z", "Undo last AI rewrite", '"$DIR/polish" --undo')
-     then: hyprctl reload && hyprctl configerrors
+Next: the browser menu (optional). Open brave://extensions (or chrome://extensions),
+enable Developer mode, "Load unpacked" -> $DIR/browser-extension
 MSG

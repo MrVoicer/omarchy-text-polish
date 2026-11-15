@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # rewrite.sh STYLE INPUT_FILE
 # Rewrites the text in INPUT_FILE (POLISH_MODE=reply: drafts a reply to it;
 # POLISH_MODE=read: summarizes/explains it) with the selected agent. Always exits 0.

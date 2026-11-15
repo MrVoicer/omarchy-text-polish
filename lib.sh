@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Shared helpers for polish, apply.sh and rewrite.sh (sourced, not run).
 
 # Private per-user runtime dir: $XDG_RUNTIME_DIR/text-polish, or ~/.cache/text-polish

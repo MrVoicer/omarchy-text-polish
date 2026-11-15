@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Polish — AI rewrite popup for selected text (standalone Quickshell config).
 // Launched by ./polish; env: POLISH_INPUT, POLISH_STYLE, POLISH_EDITABLE,
 // POLISH_WINDOW, POLISH_MONITOR, POLISH_DIR.
