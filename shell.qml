@@ -1693,8 +1693,8 @@ ShellRoot {
                     model: root.blanks
                     delegate: Rectangle {
                       required property var modelData
-                      readonly property rect a: { editor.width; editor.contentHeight; editor.text; return editor.positionToRectangle(modelData.s) }
-                      readonly property rect b: { editor.width; editor.contentHeight; editor.text; return editor.positionToRectangle(modelData.e) }
+                      readonly property rect a: { editor.width; editor.contentHeight; editor.text; return modelData.e <= editor.length ? editor.positionToRectangle(modelData.s) : Qt.rect(0, 0, 0, 0) }
+                      readonly property rect b: { editor.width; editor.contentHeight; editor.text; return modelData.e <= editor.length ? editor.positionToRectangle(modelData.e) : Qt.rect(0, 0, 0, 0) }
                       x: a.x - 1; y: a.y
                       width: (b.y === a.y ? b.x - a.x : editor.width - editor.rightPadding - a.x) + 2
                       height: a.height
@@ -1783,33 +1783,35 @@ ShellRoot {
               Layout.fillWidth: true
               spacing: 8
               IconButton { glyph: root.copied ? "\u{F012C}" : "\u{F018F}"; enabled: !root.showOriginal && !root.busy && root.current.ok; onClicked: root.copy() }
+              // Status, one line that shrinks (elides) so the buttons on the right
+              // always fit: tweet count first, then blanks, changes, Copied.
               Text {
-                visible: root.blanks.length > 0 && !root.showOriginal
-                text: root.blanks.length + (root.blanks.length === 1 ? " blank" : " blanks") + " to fill \u00b7 Tab"
+                id: cardStatus
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                readonly property bool tweetCount: !!root.current && root.current.style === "tweet" && !root.showOriginal && !root.busy && root.current.ok
+                readonly property bool blankHint: root.blanks.length > 0 && !root.showOriginal
+                text: {
+                  var parts = []
+                  // X/Twitter limit; JS length counts emoji as 2 (UTF-16 units, as rewrite.sh counts).
+                  if (tweetCount) parts.push(editor.text.trim().length + "/280")
+                  if (blankHint) parts.push(root.blanks.length + (root.blanks.length === 1 ? " blank" : " blanks"))   // click or Tab to fill
+                  if (root.showDiff && !root.showOriginal && !root.copied)
+                    parts.push(root.diff.count === 0 ? "No changes needed" : root.diff.count + (root.diff.count === 1 ? " change" : " changes"))
+                  if (root.copied) parts.push("Copied")
+                  return parts.join(" \u00b7 ")
+                }
                 textFormat: Text.PlainText
-                color: root.accent; font.family: root.font; font.pixelSize: 13
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.nextBlank(1) }
-              }
-              Text {
-                // X/Twitter limit; JS length counts emoji as 2, close to X's own weighting.
-                visible: root.current && root.current.style === "tweet" && !root.showOriginal && !root.busy && root.current.ok
-                text: editor.text.trim().length + " / 280"   // UTF-16 units, as rewrite.sh counts
-                textFormat: Text.PlainText
-                color: editor.text.trim().length > 280 ? root.danger : root.dim
+                elide: Text.ElideRight
+                color: tweetCount && editor.text.trim().length > 280 ? root.danger : blankHint ? root.accent : root.dim
                 font.family: root.font; font.pixelSize: 13
+                MouseArea {
+                  anchors.fill: parent
+                  enabled: cardStatus.blankHint
+                  cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                  onClicked: root.nextBlank(1)
+                }
               }
-              Text {
-                visible: root.showDiff && !root.showOriginal && !root.copied
-                text: root.diff.count === 0 ? "No changes needed" : root.diff.count + (root.diff.count === 1 ? " change" : " changes")
-                textFormat: Text.PlainText
-                color: root.dim; font.family: root.font; font.pixelSize: 13
-              }
-              Text {
-                text: root.copied ? "Copied" : ""
-                textFormat: Text.PlainText
-                color: root.dim; font.family: root.font; font.pixelSize: 13
-              }
-              Item { Layout.fillWidth: true }
               Rectangle {
                 visible: root.diffAvailable
                 implicitWidth: diffText.implicitWidth + 24
